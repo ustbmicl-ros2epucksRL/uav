@@ -2,6 +2,20 @@
 const root = location.pathname.startsWith('/network') ? '/network' : '';
 const $ = id => document.getElementById(id);
 const activeKey = 'research-agent-active:' + root;
+const agentQuery = new URLSearchParams(location.search || '');
+const embedded = agentQuery.get('embed') === '1';
+if (embedded) {
+    document.body.classList.add('agent-embedded');
+    window.parent.postMessage({type:'platform-assistant-ready'}, '*');
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape') {
+            event.stopPropagation();
+            window.parent.postMessage({type:'platform-assistant-close'}, '*');
+        }
+    });
+}
+const initialScene = agentQuery.get('scene');
+if (['urban','corridor','electromagnetic'].includes(initialScene)) $('scene').value = initialScene;
 let record = null, timer = null, generation = 0;
 const nav = {tasks:'规划任务',resources:'资源配置',diagnosis:'感知诊断',planning:'网络规划',plans:'方案管理',demonstration:'示范应用',research:'研究问题',agents:'研究智能体'};
 for (const [key,label] of Object.entries(nav)) {
@@ -36,6 +50,8 @@ function controls(active) {
 }
 function render(data) {
     record = data;
+    const scenes = {urban:'园区高密度建筑区',corridor:'物流主干道路',electromagnetic:'园区复杂电磁区'};
+    $('run-context').textContent = data.request ? '本次记录：' + (data.request.workflow === 'platform' ? scenes[data.request.scene] || data.request.scene : '研究子任务 ' + data.request.task_id) + ' · ' + data.request.question : '';
     $('stage').textContent = data.stage + (data.error ? '：' + data.error : '');
     const active = data.status === 'running'; controls(active);
     $('export').disabled = false; $('purpose').textContent = data.selection?.purpose || '';

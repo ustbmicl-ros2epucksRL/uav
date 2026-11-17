@@ -405,3 +405,8 @@ Ubuntu 机密来宾验收：scripts/accept_seaweed_key_migration.sh --mode snp�
   GET /api/research-agent/tools 提供工具目录；POST /tools/{name} 仅开放白名单只读工具。
   通用框架客户端：scripts/agent_platform_client.py；设计及接入契约：docs/智能体框架融合与工具接口.txt。
   当前没有接通真机控制，也未安装第三方智能体框架运行时。
+
+Copilot 式辅助窗口
+  地面站、业务服务及主要规划页右下角新增“平台助手”，默认收起；原完整界面保留。
+  支持收起保留草稿、Escape、独立窗口和首次带入规划场景；没有安装 CopilotKit 或 LangGraph。
+  设计与验收见 docs/智能体框架融合与工具接口.txt 第八节。

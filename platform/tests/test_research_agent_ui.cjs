@@ -3,8 +3,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 
-function setup(pathname='/network/agents') {
-    const elements={}, calls=[], saved=new Map(), timers=[];
+function setup(pathname='/network/agents', search='') {
+    const elements={}, calls=[], saved=new Map(), timers=[], classes=new Set(), events={}, messages=[];
     class Element {
         constructor(){ this.value=''; this.children=[]; this.disabled=false; this.hidden=false; this.textContent=''; }
         append(...children){this.children.push(...children);}
@@ -23,9 +23,9 @@ function setup(pathname='/network/agents') {
         else data=state.run;
         return {ok:true,json:async()=>data};
     };
-    const context=vm.createContext({document:{getElementById:get,createElement:()=>new Element()},location:{pathname},localStorage:{getItem:k=>saved.get(k),setItem:(k,v)=>saved.set(k,v),removeItem:k=>saved.delete(k)},fetch,console,URL,Blob,setTimeout:fn=>{timers.push(fn);return timers.length;},clearTimeout(){}});
+    const context=vm.createContext({document:{getElementById:get,createElement:()=>new Element(),body:{classList:{add:name=>classes.add(name)}},addEventListener:(name,fn)=>events[name]=fn},window:{parent:{postMessage:(data,origin)=>messages.push({data,origin})}},location:{pathname,search},localStorage:{getItem:k=>saved.get(k),setItem:(k,v)=>saved.set(k,v),removeItem:k=>saved.delete(k)},fetch,console,URL,URLSearchParams,Blob,setTimeout:fn=>{timers.push(fn);return timers.length;},clearTimeout(){}});
     vm.runInContext(fs.readFileSync(__dirname+'/../static/research-agent.js','utf8'),context);
-    return {get,calls,state,context,saved};
+    return {get,calls,state,context,saved,classes,events,messages};
 }
 const ready=()=>new Promise(resolve=>setImmediate(resolve));
 
@@ -60,4 +60,22 @@ test('obsolete poll responses cannot overwrite the selected run',async()=>{
     vm.runInContext('generation=5',s.context);
     await vm.runInContext("poll('old',4)",s.context);
     assert.equal(vm.runInContext('record',s.context),null);
+});
+
+
+test('embedded assistant uses validated initial scene and escape only requests close',async()=>{
+    const s=setup('/network/agents','?embed=1&scene=electromagnetic');await ready();
+    assert(s.classes.has('agent-embedded'));assert.equal(s.get('scene').value,'electromagnetic');
+    s.events.keydown({key:'Escape',stopPropagation(){}});
+    assert.equal(s.messages[0].data.type,'platform-assistant-ready');
+    assert.equal(s.messages[1].data.type,'platform-assistant-close');
+    assert.equal(s.calls.filter(c=>c.options.method==='POST').length,0);
+    const unknown=setup('/agents','?embed=1&scene=invalid');await ready();
+    assert.equal(unknown.get('scene').value,'corridor');
+});
+
+test('saved report shows its own scene even if current draft selection differs',async()=>{
+    const s=setup();await ready();s.state.run.request={workflow:'platform',scene:'urban',question:'历史园区问题'};
+    s.get('history').value='a'.repeat(32);s.get('history').onchange();await ready();
+    assert.match(s.get('run-context').textContent,/园区高密度建筑区.*历史园区问题/);
 });

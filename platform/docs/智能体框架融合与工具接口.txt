@@ -92,3 +92,29 @@ https://docs.langchain.com/oss/python/langgraph/overview
   选择 scene_snapshot 和 assessment_results，正确引用两项工具证据并保留空验算记录。
   原始记录保存在工作区 outputs/agent-platform-integration（不上传运行数据）。
   本轮浏览器控制服务不可用，尚未完成真实页面视觉与点击验收。
+
+八、完整工作台与 Copilot 式辅助窗口（2026-11-17）
+界面定位：原地图、资源、申请审批、任务调度、规划和回放保持完整，智能体作为可收起的
+辅助入口。右下角“平台助手”首次点击才加载；收起不会销毁草稿或取消后台分析。
+已接入：地面站首页、规划首页、规划五页、工程工作台、任务验算页、业务服务。
+业务服务中的嵌入地图不重复创建助手。iframe/Shadow DOM 隔离样式和脚本，不替换
+原页面或绑定业务提交按钮。支持 Escape 收起与独立窗口入口。
+规划首页初次打开可带入已选场景；其他页面在助手中明确选择场景。不会自动读取
+申请表、未保存的资源修改或实时遥测。已有运行记录显示其自身场景与问题，避免与
+当前编辑中的问题混淆。
+
+框架建议：
+- 当前原生 JavaScript 前端使用轻量侧栏，复用已验证的 HTTP 工作流，避免迁移整套界面。
+- 若需要标准对话组件与流式交互，可单独将助手组件接入 CopilotKit；其 Sidebar/Popup
+  等组件的官方文档：https://docs.copilotkit.ai/langgraph-python/troubleshooting/migrate-to-v2
+- 长任务、断点恢复和人工审批可采用 LangGraph 编排，复用现有平台工具。
+- CopilotKit 与 LangGraph 均是后续可选依赖，本次没有安装，也没有将轻量侧栏称为它们的运行时。
+- GitHub Copilot 的编辑器 Agent 用于开发代码，不等同于交付给业务用户的网页助手。
+
+界面验证：
+使用隔离数据库和本机 8894 测试服务，在原生 Chrome 实际核对地面站展开/收起、
+草稿保留、规划场景带入、Escape 收起、业务页切换申请审批且助手仍保留。
+浏览器协议工具不可用，本轮通过原生应用控制完成桌面检查，未做手机设备验收。
+地面站初次加载出现既有遥测初始化超时提示，未把这轮侧栏检查当作全量飞控验收。
+前端逻辑回归命令新增 tests/test_agent_assistant.cjs、tests/test_research_agent_ui.cjs；
+本轮共 87 项前端逻辑测试通过；回放用例需 COMPUTE_REPLAY_FLOW 指向已有仿真证据。

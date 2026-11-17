@@ -31,3 +31,8 @@ action(async()=>{if(['approve','reject'].includes(a)){await api(`/api/applicatio
 refresh().then(async()=>{notice('已连接后台，当前显示持久化记录。');if(initialQuery?.get('task'))await focusTask(initialQuery.get('task'));}).catch(e=>notice(e.message,true));
 
 setInterval(async()=>{if(busy)return;try{const p=await api('/api/performance');data.performance=p;$('stats').innerHTML=['submitted','approved','scheduled','flying','completed','uncertain'].map(k=>`<div class="stat"><b>${p[k]||0}</b><span>${names[k]}</span></div>`).join('');if(tab==='tasks')for(const t of data.tasks?.tasks||[]){if(t.execution_source==='ardupilot-sitl'&&['prepared','flying','uncertain','dispatching'].includes(t.status))await api('/api/tasks/'+encodeURIComponent(t.id)+'/sync',{});}if(tab==='tasks'||tab==='validation')await refresh();}catch{notice('后台刷新失败，统计可能已过期',true);}},5000);
+
+// Optional platform assistant uses the existing ground-station origin.
+(() => {
+ const script=document.createElement('script');script.src=groundBase+'/network/static/agent-assistant.js?v=20261117';script.defer=true;document.body.append(script);
+})();
