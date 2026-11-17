@@ -398,3 +398,10 @@ GET /api/stability/{id}/files/{path}（仅允许该回归目录内的报告、�
 真实 Trustee KBS（sample 证明策略）与 SeaweedFS 大视频迁移一键验收：bash scripts/accept_seaweed_key_migration.sh。环境准备、故障点与 Ubuntu 切换见 docs/真实SeaweedFS大视频密钥迁移验收.txt。
 Ubuntu 机密来宾验收：scripts/accept_seaweed_key_migration.sh --mode snp（或 tdx）--config 来宾配置 --controller 独立控制适配器 --report 新JSON文件。部署和权威审计事件接口见 docs/真实SeaweedFS大视频密钥迁移验收.txt。
 数据保险箱存储图：docs/figures/cabinet-storage.pdf，独立 XeLaTeX 源文件同名。v3 sample 验收将预览 ID 与取钥调用 ID 绑定至真实 RCAR 会话并记录并发重叠时长。复核命令为 python3 scripts/cabinet_trustee_audit.py <报告>。
+
+智能体与平台工具融合
+  /agents 新增“平台诊断”工作流：场景快照、覆盖基线、规划任务和历史验算证据。
+  同次运行冻结输入，保存证据编号；提供历史记录、停止与导出，保留原研究算例。
+  GET /api/research-agent/tools 提供工具目录；POST /tools/{name} 仅开放白名单只读工具。
+  通用框架客户端：scripts/agent_platform_client.py；设计及接入契约：docs/智能体框架融合与工具接口.txt。
+  当前没有接通真机控制，也未安装第三方智能体框架运行时。

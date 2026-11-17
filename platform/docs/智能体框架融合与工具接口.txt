@@ -1,0 +1,94 @@
+智能体框架融合与工具接口
+======================
+
+一、职责分层
+用户/智能体页面 → 编排层 → 受限平台工具 → 现有算法与记录 → 证据报告。
+编排层负责理解问题、选择工具、组织分析和复核；平台负责计算、参数校验、
+版本检查与执行记录。飞行审批、安全检查和指令回执继续属于原业务服务。
+
+本轮落地
+- 原 15 个研究算例工作流保留，新增 platform 工作流。
+- 在一次数据库读事务中冻结所选场景、最近 20 个规划任务摘要、最近 10 个验算摘要。
+- 模型最多选择 4 个不同的只读工具，所有工具使用同一输入快照。
+- 返回来源类型、场景版本、快照 SHA256、证据编号、时间及限制。
+- 报告必须引用本次真实工具结果的 evidence_id；未知编号、非法工具和重复调用计划拒绝接受。
+- 历史列表、停止、刷新恢复查询及 JSON 导出；失败时保留此前工具证据。
+- 当前仅单进程单 worker 的任务互斥；重启标记 interrupted，不承诺断点自动恢复。
+- 平台诊断最长 600 秒；模型单次请求最长 240 秒。取消停止后续步骤；已经启动的
+  只读计算线程可能完成当前计算，但不会应用配置或产生飞行指令。
+
+二、已有工具
+scene_snapshot：设备配置与场景摘要。online/offline 是配置值，不是设备心跳。
+diagnose_coverage：复用现有 50 m 网格基线，计算覆盖率和薄弱区；不是 10 m/2 m 验算。
+planning_records：所选场景最新 20 条规划任务摘要，返回截断标记。
+assessment_results：所选场景最新 10 条验算摘要，保留任务号、状态、统计、来源路径和场景版本。
+
+历史验算只核对 scene_revision_matches；任务、资源、标定、算法版本的完整有效性
+仍须在验算页面确认。空记录不会被转换成“通过”。模型引用校验只验证编号归属，
+并不证明每一句解释都正确；涉及现场结论仍需人核验。
+
+三、HTTP/JSON 接口
+独立规划服务：/api/research-agent
+地面站挂载：/network/api/research-agent
+
+GET  /tools            工具目录与 JSON Schema
+POST /tools/{name}     {"scene":"urban","expected_revision":1}
+GET  /runs?limit=20    最近运行摘要
+POST /runs            {"workflow":"platform","scene":"urban","question":"检查覆盖薄弱区","mode":"review"}
+GET  /runs/{id}        查询报告、输入快照、执行轨迹
+POST /runs/{id}/cancel 停止当前运行
+
+expected_revision 可省略；指定时版本不一致返回 409。工具接口未知字段返回 422，
+不存在的工具拒绝执行；不接受任意 URL、文件路径、SQL、Shell 或飞行指令。
+/api/research-agent/tools 的 path 和 source_path 均相对规划服务根路径，
+挂载时需要加 /network。这是 HTTP 工具接口，并非实现了 MCP 协议。
+
+一次 platform 运行的所有结果共享快照；外部框架单独调用多个工具时，每次都会重新
+取快照，需比较 snapshot_digest，不能只凭场景版本一致就假定历史任务也未变化。
+需要完整一致证据流程时，优先使用 POST /runs。
+
+四、与框架融合
+两种接入粒度：
+A. 把 POST /runs + GET /runs/{id} 包装成一个长任务工具，复用本平台的选工具/分析/复核流程。
+B. 把目录中的四个只读工具分别注册为框架工具，由框架自己选工具并解释。
+   原始证据对象必须保存，不能只把 conclusion 写入长期记忆；外部框架还需自己实现
+   引用校验、用户/场景权限、调用预算及运行生命周期。
+
+通用 Python 适配器：scripts/agent_platform_client.py（使用现有 httpx 依赖）。
+在仓库根目录运行：
+  python platform/scripts/agent_platform_client.py
+  python platform/scripts/agent_platform_client.py --tool scene_snapshot --scene urban
+  python platform/scripts/agent_platform_client.py --question '检查园区已有验算是否足以支持达标结论'
+  python platform/scripts/agent_platform_client.py --run-id <上一步返回的id>
+独立服务可加 --base-url http://127.0.0.1:8767。
+
+LangGraph 可把取快照、选工具、计算、分析和复核分别建成节点；有状态长任务、
+持久检查点和人工介入适合后续规划草案审批。框架官方说明：
+https://docs.langchain.com/oss/python/langgraph/overview
+本轮没有安装 LangGraph 或声明已经接通其运行时；适配器与 HTTP 契约不依赖特定框架。
+其他支持函数工具的框架同样可以调用 PlatformTools.call，或用 start/read 包装完整工作流。
+
+五、后续写操作的接入边界
+建议将“提交规划计算”作为独立异步工具，把“应用方案”“飞行任务准备/执行”作为
+人工确认后的业务动作。确认内容应包含方案/任务 ID、输入版本、对象、费用或资源变化，
+执行前复核版本及原有审批与安全条件；模型文字或复核角色的结论不能替代人工确认。
+本轮未实现这些写工具、统一鉴权、飞行实时遥测工具、全文检索或分布式队列。
+
+六、运行与数据范围
+保留本机 Ollama；RESEARCH_MODEL、RESEARCH_OLLAMA_URL 沿用原配置。
+平台工具本身不需要模型在线。数据存储于 SENSE_DATA_DIR/research_agent_runs。
+接口沿用本机演示部署边界，不自带新的生产身份认证；不得把工具目录当成权限系统。
+接入外部框架时默认继续本机运行，云模型或跨主机部署需单独决定数据范围与鉴权方式。
+
+七、验证
+在 platform 目录：
+  python -m pytest tests/test_agent_tools.py tests/test_research_agent.py -q
+  node --test tests/test_research_agent_ui.cjs
+测试覆盖真实基线计算、版本拒绝、场景隔离、历史截断、空证据、非法工具、伪造引用、
+双角色工作流、历史中断及挂载路径。单元测试中的模型输出为替身，不替代真实模型验收。
+
+本轮验证记录
+  后端 23 项、前端逻辑 4 项通过。实际 deepseek-r1:32b 完成单角色平台诊断，
+  选择 scene_snapshot 和 assessment_results，正确引用两项工具证据并保留空验算记录。
+  原始记录保存在工作区 outputs/agent-platform-integration（不上传运行数据）。
+  本轮浏览器控制服务不可用，尚未完成真实页面视觉与点击验收。
