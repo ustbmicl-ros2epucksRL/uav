@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>低空平台</title>
+  <link rel="stylesheet" href="/static/service.css">
+</head>
+<body>
+  <header>
+    <div class="brand">低空平台<small>业务看板 · 8771</small></div>
+    <nav id="nav"></nav>
+    <div class="head-tools">
+      <label>视图
+        <select id="role">
+          <option value="city">城市云脑</option>
+          <option value="portal">各类门户</option>
+          <option value="mobile">移动终端</option>
+        </select>
+      </label>
+      <label id="pilot-wrap" hidden>飞手
+        <select id="pilot">
+          <option value="P-01">P-01</option>
+          <option value="P-02">P-02</option>
+        </select>
+      </label>
+      <a class="ext" href="http://127.0.0.1:8772/">地面站 8772</a>
+      <span class="badge">页面设计稿</span>
+    </div>
+  </header>
+  <p class="banner">本页独立于地面站。示例只在本页变化，不写入服务器。商家、用户角色和成果统计不在本期。</p>
+  <main id="app"></main>
+  <script>
+const scenes = { urban: "园区高密度建筑区", corridor: "物流主干道路", electromagnetic: "园区复杂电磁区" };
+const resources = [
+  { id: "AP-01", kind: "机场", name: "园区自动化起降点", place: "200, 200", status: "可用" },
+  { id: "UAV-01", kind: "飞机", name: "园区巡检机", place: "机场 AP-01", status: "空闲", pilot: "P-01", payload: "光电吊舱" },
+  { id: "UAV-02", kind: "飞机", name: "廊道物流机", place: "机场 AP-01", status: "空闲", pilot: "P-02", payload: "报文终端" },
+  { id: "PL-01", kind: "挂载", name: "光电吊舱", place: "UAV-01", status: "在机" },
+  { id: "PL-02", kind: "挂载", name: "报文终端", place: "UAV-02", status: "在机" },
+  { id: "P-01", kind: "飞手", name: "飞手 P-01", place: "UAV-01", status: "空闲" },
+  { id: "P-02", kind: "飞手", name: "飞手 P-02", place: "UAV-02", status: "空闲" }
+];
+const state = {
+  role: "city",
+  page: "home",
+  selectedApp: "APP-014",
+  selectedTask: "TASK-008",
+  pilot: "P-01",
+  notice: "",
+  apps: [
+    { id: "APP-011", applicant: "李航", pilot: "P-02", vehicle: "UAV-02", scene: "corridor", purpose: "主干道试飞", status: "已驳回", reviewer: "值班员", note: "航线超出本期窗口", route: [[900,400,60],[1400,400,60],[1400,900,60]] },
+    { id: "APP-012", applicant: "周宁", pilot: "P-01", vehicle: "UAV-01", scene: "urban", purpose: "园区巡检", status: "已批准", reviewer: "值班员", note: "同意按围栏内航线执行", route: [[200,200,80],[700,200,80],[700,700,100],[200,700,80],[200,200,0]] },
+    { id: "APP-014", applicant: "张三", pilot: "P-02", vehicle: "UAV-02", scene: "electromagnetic", purpose: "电磁区核查", status: "已提交", reviewer: "", note: "", route: [[900,400,80],[1400,400,80],[1400,800,80],[900,400,0]] }
+  ],
+  tasks: [
+    { id: "TASK-008", app: "APP-012", vehicle: "UAV-01", pilot: "P-01", scene: "urban", purpose: "园区巡检", status: "待下发", mode: "定点 · 未解锁", next: "1 / 5" }
+  ],
+  events: [
+    { time: "09:20", task: "—", detail: "APP-011 已驳回，未预留资源" }
+  ]
+};
+const pages = {
+  city: [["home","数据看板"],["review","申请审批"],["task","任务调度"],["ledger","资源台账"],["perf","事件绩效"]],
+  portal: [["apply","我的申请"]],
+  mobile: [["mine","我的任务"]]
+};
+function tag(status) {
+  const kind = status === "已提交" || status === "待下发" ? "wait" : status === "已批准" || status === "已完成" || status === "可用" || status === "空闲" || status === "在机" ? "ok" : status === "已驳回" || status === "已中止" ? "no" : "hold";
+  return `<span class="tag ${kind}">${status}</span>`;
+}
+function counts() {
+  const apps = state.apps;
+  return {
+    pending: apps.filter(a => a.status === "已提交").length,
+    reserved: state.tasks.filter(t => t.status === "待下发").length,
+    flying: state.tasks.filter(t => t.status === "飞行中").length,
+    done: state.tasks.filter(t => t.status === "已完成").length,
+    approved: apps.filter(a => a.status === "已批准").length,
+    rejected: apps.filter(a => a.status === "已驳回").length,
+    aborted: state.tasks.filter(t => t.status === "已中止").length
+  };
+}
+function occupy(vehicleId, next) {
+  const vehicle = resources.find(r => r.id === vehicleId);
+  const payload = resources.find(r => r.kind === "挂载" && r.place === vehicleId);
+  const pilot = resources.find(r => r.id === vehicle.pilot);
+  const airport = resources.find(r => r.id === "AP-01");
+  vehicle.status = next === "占用" ? "占用" : next;
+  if (payload) payload.status = next === "空闲" ? "在机" : next;
+  if (pilot) pilot.status = next === "占用" ? "执行中" : next === "预留" ? "预留" : "空闲";
+  if (airport && next !== "空闲") airport.status = next === "占用" ? "占用" : "预留";
+  if (next === "空闲" && !state.tasks.some(t => t.status === "待下发" || t.status === "飞行中")) airport.status = "可用";
+}
+function routeBox(points) {
+  const xs = points.map(p => p[0]), ys = points.map(p => p[1]);
+  const minX = Math.min(...xs) - 80, maxX = Math.max(...xs) + 80, minY = Math.min(...ys) - 80, maxY = Math.max(...ys) + 80;
+  const xy = p => [((p[0]-minX)/(maxX-minX)*260+10), (150-((p[1]-minY)/(maxY-minY)*130))];
+  const d = points.map((p, i) => `${i ? "L" : "M"}${xy(p).map(n => n.toFixed(1)).join(",")}`).join(" ");
+  const used = [];
+  const marks = points.map((p, i) => {
+    const [x, y] = xy(p);
+    const dup = used.filter(q => Math.hypot(q[0]-x, q[1]-y) < 8).length;
+    used.push([x, y]);
+    return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4" fill="#7fd0ff"></circle><text x="${(x+8).toFixed(1)}" y="${(y-4+dup*12).toFixed(1)}" font-size="10" fill="#d7ecff">${i+1} · ${p[2]} m</text>`;
+  }).join("");
+  return `<svg class="route" viewBox="0 0 280 180"><rect width="280" height="180" fill="#10263c"></rect><path d="${d}" fill="none" stroke="#7fd0ff" stroke-width="3"></path>${marks}</svg>`;
+}
+function boardMap() {
+  const pt = (x, y) => [28 + x / 2000 * 344, 236 - y / 2000 * 196];
+  const craft = [{ id: "UAV-01", name: "园区巡检机", x: 200, y: 200 }, { id: "UAV-02", name: "廊道物流机", x: 900, y: 400 }];
+  const dots = craft.map(c => {
+    const [px, py] = pt(c.x, c.y);
+    const st = resources.find(r => r.id === c.id).status;
+    return `<circle cx="${px}" cy="${py}" r="5" fill="#7fd0ff"></circle><text x="${px + 8}" y="${py - 6}" fill="#d7ecff" font-size="11">${c.name}</text><text x="${px + 8}" y="${py + 8}" fill="#8eb4d4" font-size="10">${st}</text>`;
+  }).join("");
+  return `<svg class="board-map" viewBox="0 0 400 270"><rect width="400" height="270" fill="#0c2340"></rect><rect x="28" y="40" width="344" height="196" fill="#14375d" stroke="#7fd0ff" stroke-width="1.4"></rect><text x="200" y="24" text-anchor="middle" fill="#d7ecff" font-size="13">雄安容城晾马台一带 · 2 公里仿真范围</text>${dots}</svg>`;
+}
+function bars(items) {
+  const max = Math.max(1, ...items.map(i => i.n));
+  return items.map(i => `<div class="bar"><span>${i.name}</span><i style="width:${i.n ? Math.max(12, i.n / max * 100) : 0}%"></i><b>${i.n}</b></div>`).join("");
+}
+function home() {
+  const c = counts();
+  const kinds = ["机场", "飞机", "挂载", "飞手"].map(name => ({ name, n: resources.filter(r => r.kind === name).length }));
+  return `<section class="board">
+    <aside class="card"><h2>资源统计</h2>${bars(kinds)}<h2>任务状态</h2>${bars([{name:"待下发",n:c.reserved},{name:"飞行中",n:c.flying},{name:"已完成",n:c.done},{name:"已中止",n:c.aborted}])}</aside>
+    <div class="stage"><div class="stage-title">数据看板</div>${boardMap()}<div class="kpis"><div><b>${c.pending}</b><span>待审</span></div><div><b>${c.reserved}</b><span>已预留</span></div><div><b>${c.flying}</b><span>飞行中</span></div></div></div>
+    <aside class="card"><h2>申请</h2>${bars([{name:"已提交",n:c.pending},{name:"已批准",n:c.approved},{name:"已驳回",n:c.rejected}])}<h2>最新事件</h2><p class="note">${state.events.slice(0,3).map(e => e.detail).join("<br>") || "暂无事件"}</p></aside>
+  </section>`;
+}
+function table(rows, row, heads) {
+  if (!rows.length) return `<p class="note">暂无记录</p>`;
+  return `<table><thead><tr>${heads.map(h => `<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.map(row).join("")}</tbody></table>`;
+}
+function review() {
+  const item = state.apps.find(a => a.id === state.selectedApp) || state.apps[0];
+  const vehicle = resources.find(r => r.id === item.vehicle);
+  return `<section class="grid two">
+    <div class="card"><h2>申请列表</h2><table><thead><tr><th>单号</th><th>申请人</th><th>飞机</th><th>状态</th></tr></thead><tbody>
+      ${state.apps.map(a => `<tr class="${a.id===item.id?"selected":""}" data-app="${a.id}"><td>${a.id}</td><td>${a.applicant}</td><td>${a.vehicle}</td><td>${tag(a.status)}</td></tr>`).join("")}
+    </tbody></table></div>
+    <div class="card"><h2>${item.id}</h2>
+      <dl><dt>申请人</dt><dd>${item.applicant}</dd><dt>飞手</dt><dd>${item.pilot}</dd><dt>飞机</dt><dd>${vehicle.name}</dd><dt>挂载</dt><dd>${vehicle.payload}</dd><dt>机场</dt><dd>AP-01</dd><dt>场景</dt><dd>${scenes[item.scene]}</dd><dt>目的</dt><dd>${item.purpose}</dd><dt>围栏</dt><dd>航点在 0–2000 m、高度 0–300 m 内</dd></dl>
+      ${routeBox(item.route)}
+      ${item.status === "已提交" ? `<label class="field">审批人<input id="reviewer" value="值班员"></label><label class="field">意见<textarea id="note" rows="2"></textarea></label><div class="actions"><button class="action" id="approve">批准</button><button class="ghost" id="reject">驳回</button></div>` : `<p class="note">${item.reviewer}：${item.note || "无意见"}</p>`}
+    </div>
+  </section>`;
+}
+function taskPage() {
+  const item = state.tasks.find(t => t.id === state.selectedTask) || state.tasks[0];
+  const app = item && state.apps.find(a => a.id === item.app);
+  if (!item) return `<div class="card"><h2>任务</h2><p class="note">还没有任务。批准申请后在这里生成待下发任务。</p></div>`;
+  return `<section class="grid two">
+    <div class="card"><h2>任务列表</h2><table><tbody>${state.tasks.map(t => `<tr class="${t.id===item.id?"selected":""}" data-task="${t.id}"><td>${t.id}</td><td>${t.purpose}</td><td>${tag(t.status)}</td></tr>`).join("")}</tbody></table>
+      <h2 style="margin-top:16px">平面航线</h2>${routeBox(app.route)}<p class="note">与地面站同一锚点。这里只看航线，不绘制感知覆盖。</p></div>
+    <div class="card"><h2>${item.id}</h2>
+      <dl><dt>飞机</dt><dd>${item.vehicle}</dd><dt>飞手</dt><dd>${item.pilot}</dd><dt>模式</dt><dd>${item.mode}</dd><dt>下一航点</dt><dd>${item.next}</dd><dt>下发条件</dt><dd>飞控在线，且该机定点、未解锁</dd></dl>
+      <div class="actions"><button class="action" id="dispatch" ${item.status==="待下发"?"":"disabled"}>下发</button><a class="ghost" href="http://127.0.0.1:8772/">打开地面站</a></div>
+      <h2 style="margin-top:16px">对外摘要</h2>
+      <dl><dt>任务</dt><dd>${item.id}</dd><dt>场景</dt><dd>${scenes[item.scene]}</dd><dt>目的</dt><dd>${item.purpose}</dd><dt>状态</dt><dd>${item.status}</dd><dt>飞机</dt><dd>${item.vehicle}</dd></dl>
+      <p class="note">摘要不含审批意见。</p></div>
+  </section>`;
+}
+function ledger() {
+  const groups = ["机场","飞机","挂载","飞手"];
+  return `<section class="grid cards">${groups.map(kind => `<div class="card"><h2>${kind}</h2>${resources.filter(r => r.kind===kind).map(r => `<p><b>${r.name}</b><br><span class="note">${r.id} · ${r.place}</span><br>${tag(r.status)}</p>`).join("")}</div>`).join("")}</section><p class="note">一架飞机绑定一个机场、一名飞手、一套挂载。批准后预留，下发后占用，结束后恢复。</p>`;
+}
+function perf() {
+  const c = counts();
+  return `<section class="grid stats">
+    ${[["申请",state.apps.length],["批准",c.approved],["驳回",c.rejected],["飞行中",c.flying],["已完成",c.done],["已中止",c.aborted]].map(([n,v]) => `<div class="card stat"><span>${n}</span><b>${v}</b></div>`).join("")}
+  </section><div class="card" style="margin-top:14px"><h2>事件</h2>${table(state.events, e => `<tr><td>${e.time}</td><td>${e.task}</td><td>${e.detail}</td></tr>`, ["时间","任务","内容"])}</div>`;
+}
+function applyPage() {
+  const windows = state.apps.filter(a => a.status === "已批准");
+  const submitted = state.apps.filter(a => a.status === "已提交");
+  return `<section class="grid two"><div class="card"><h2>新建申请</h2>
+    <label class="field">申请人<input id="applicant" value="陈敏"></label>
+    <label class="field">飞机<select id="vehicle"><option value="UAV-01">园区巡检机 · P-01 · 光电吊舱</option><option value="UAV-02">廊道物流机 · P-02 · 报文终端</option></select></label>
+    <label class="field">场景<select id="scene"><option value="urban">园区高密度建筑区</option><option value="corridor">物流主干道路</option><option value="electromagnetic">园区复杂电磁区</option></select></label>
+    <label class="field">目的<input id="purpose" value="园区例行巡检"></label>
+    <p class="note">航线使用该机示例四点，高度 80 m，落在围栏内。正式绘制在地面站。</p>
+    <button class="action" id="create">提交申请</button></div>
+    <div class="card"><h2>已提交</h2>${table(submitted, a => `<tr><td>${a.id}</td><td>${a.purpose}</td><td>${tag(a.status)}</td></tr>`, ["单号","目的","状态"])}<h2 style="margin-top:16px">已批准窗口</h2>${table(windows, a => `<tr><td>${a.id}</td><td>${scenes[a.scene]}</td><td>${a.purpose}</td></tr>`, ["单号","场景","目的"])}</div></section>`;
+}
+function mine() {
+  const rows = state.tasks.filter(t => t.pilot === state.pilot);
+  if (!rows.length) return `<div class="card mobile"><h2>${state.pilot}</h2><p class="note">暂无分配给该飞手的任务。</p></div>`;
+  return `<div class="mobile">${rows.map(t => `<article class="task-card"><b>${t.purpose}</b><div>${tag(t.status)} ${t.mode}</div><p class="note">下一航点 ${t.next}<br>${t.vehicle}</p></article>`).join("")}</div>`;
+}
+function render() {
+  const role = state.role;
+  const list = pages[role];
+  if (!list.some(p => p[0] === state.page)) state.page = list[0][0];
+  document.getElementById("nav").innerHTML = list.map(([id,name]) => `<button data-page="${id}" class="${id===state.page?"active":""}">${name}</button>`).join("");
+  document.getElementById("pilot-wrap").hidden = role !== "mobile";
+  const view = { home, review, task: taskPage, ledger, perf, apply: applyPage, mine }[state.page];
+  document.getElementById("app").innerHTML = (state.notice ? `<p class="banner">${state.notice}</p>` : "") + view();
+}
+document.getElementById("role").onchange = e => { state.role = e.target.value; state.notice = ""; render(); };
+document.getElementById("pilot").onchange = e => { state.pilot = e.target.value; render(); };
+document.getElementById("nav").onclick = e => { const b = e.target.closest("[data-page]"); if (!b) return; state.page = b.dataset.page; state.notice = ""; render(); };
+document.getElementById("app").onclick = e => {
+  const appRow = e.target.closest("[data-app]");
+  const taskRow = e.target.closest("[data-task]");
+  if (appRow) { state.selectedApp = appRow.dataset.app; render(); return; }
+  if (taskRow) { state.selectedTask = taskRow.dataset.task; render(); return; }
+  if (e.target.id === "approve" || e.target.id === "reject") decide(e.target.id === "approve");
+  if (e.target.id === "create") createApp();
+  if (e.target.id === "dispatch") { state.notice = "设计稿不向飞控下发。接通服务器后，这里才会装订航线并开始。"; render(); }
+};
+function decide(approve) {
+  const item = state.apps.find(a => a.id === state.selectedApp);
+  const reviewer = document.getElementById("reviewer").value.trim();
+  const note = document.getElementById("note").value.trim();
+  if (!reviewer) { state.notice = "请填写审批人。"; render(); return; }
+  if (!approve && !note) { state.notice = "驳回时请填写意见。"; render(); return; }
+  if (approve && state.tasks.some(t => t.vehicle === item.vehicle && (t.status === "待下发" || t.status === "飞行中"))) {
+    state.notice = "这架飞机已有未结束任务，不能再批准。"; render(); return;
+  }
+  item.status = approve ? "已批准" : "已驳回";
+  item.reviewer = reviewer;
+  item.note = note;
+  if (approve) {
+    const id = "TASK-" + String(8 + state.tasks.length).padStart(3,"0");
+    state.tasks.push({ id, app: item.id, vehicle: item.vehicle, pilot: item.pilot, scene: item.scene, purpose: item.purpose, status: "待下发", mode: "定点 · 未解锁", next: "1 / " + item.route.length });
+    occupy(item.vehicle, "预留");
+    state.selectedTask = id;
+    state.events.unshift({ time: "现在", task: id, detail: item.id + " 已批准，资源已预留" });
+  } else state.events.unshift({ time: "现在", task: "—", detail: item.id + " 已驳回，未预留资源" });
+  state.notice = approve ? "已在本页示例中批准，并预留飞机、飞手、挂载和机场。" : "已在本页示例中驳回。";
+  render();
+}
+function createApp() {
+  const vehicle = resources.find(r => r.id === document.getElementById("vehicle").value);
+  const n = Math.max(...state.apps.map(a => Number(a.id.slice(4)))) + 1;
+  const home = vehicle.id === "UAV-01" ? [200,200] : [900,400];
+  state.apps.push({ id: "APP-" + String(n).padStart(3,"0"), applicant: document.getElementById("applicant").value.trim() || "未命名", pilot: vehicle.pilot, vehicle: vehicle.id, scene: document.getElementById("scene").value, purpose: document.getElementById("purpose").value.trim() || "未填写", status: "已提交", reviewer: "", note: "", route: [home.concat(80), [home[0]+400, home[1], 80], [home[0]+400, home[1]+300, 80], home.concat(0)] });
+  state.notice = "申请已记入本页示例，尚未提交到服务器。";
+  render();
+}
+resources.find(r => r.id === "UAV-01").status = "预留";
+resources.find(r => r.id === "PL-01").status = "预留";
+resources.find(r => r.id === "P-01").status = "预留";
+resources.find(r => r.id === "AP-01").status = "预留";
+render();
+  </script>
+</body>
+</html>

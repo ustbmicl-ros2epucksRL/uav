@@ -1,0 +1,2 @@
+# Offline building-data preparation only; not needed by the web service.
+shapely>=2.0,<3

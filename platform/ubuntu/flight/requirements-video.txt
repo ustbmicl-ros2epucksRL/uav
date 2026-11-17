@@ -1,0 +1,4 @@
+# Optional local CPU video-detection workload. Keep virtualenv outside iCloud.
+torch==2.6.0
+torchvision==0.21.0
+opencv-python-headless==4.11.0.86

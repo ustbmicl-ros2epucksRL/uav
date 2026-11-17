@@ -1,0 +1,48 @@
+平台密钥模式与远程证明接入（2026-11-16）
+
+Mac 本地演示
+在平台服务与离线管理命令的环境中设置
+  export SENSE_CABINET_KEY_MODE=demo
+  export SENSE_CABINET_CHECKPOINT_CONFIG=/实际路径/platform.json
+清除 SENSE_CABINET_ATTESTATION_CONFIG。沿用本地演示数据库和独立 HTTPS 检查点。未设置模式且无远程证明配置时兼容既有 Mac 安装。既有未标记数据库仅允许在演示模式打开。新数据库在受检查点认证的表中保存模式。
+演示账号与进程可以使用软件密钥。检查点保护授权状态的新鲜性，Mac 演示尚未取得硬件验收证据。
+
+Ubuntu 机密虚拟机接入
+1. 按《Mac开发演示与Ubuntu可信计算迁移方案.txt》准备 SNP 或 TDX 机密虚拟机，独立部署 Trustee KBS/AS/RVPS 及检查点。在批准的镜像内固定客户端、CA、配置和应用，完成服务器端证据验证及针对每个资源的拒绝优先策略。构建步骤和已有研究脚本见 research/data_security_cabinet/README.md。
+2. 为首轮联调创建新的数据目录和独立试验 namespace。KBS 中配置该 namespace 下 keys/state-v1、keys/checkpoint-v1、keys/audit-v1、keys/operator-v1、keys/kek-v1 五个 32 字节资源。checkpoint-v1 与独立检查点离线配置的认证 token 一致。state-v1 作为状态认证及账号凭据/CSRF 派生的根密钥。由独立管理端安全供应这些资源。
+3. 复制 deploy/cabinet-keys/hardware.example.json 到批准镜像的 /etc/cabinet/hardware.json。填入真实 HTTPS 地址、CA 的绝对路径、与镜像一致的 kbs-client 绝对路径及其 SHA-256。配置本身仅含元数据。配置示例中的摘要占位符必须替换。
+  export SENSE_CABINET_KEY_MODE=hardware
+  export SENSE_CABINET_ATTESTATION_CONFIG=/etc/cabinet/hardware.json
+  export SENSE_DATA_DIR=/var/lib/cabinet-tee
+4. 在机密虚拟机内以同一服务环境执行 python -m app.cabinet_admin migrate-auth，按需要执行 migrate-templates、migrate-attachments、migrate-chunks 和已有组织开户操作。启用服务后通过 HTTPS 登录。每次打开安全柜均经固定客户端获取资源并验证检查点。业务信封封装和解封由 TrusteeKeyBroker 单独请求 KEK。当前请求可能触发多次证明取钥，吞吐与加载时延需要实机测量。
+5. 硬件模式缺少配置、远程资源拒绝、客户端摘要错误或 KBS 不可达时，打开安全柜返回 503。业务中途再次取 KEK 被拒时该操作也失败，不会重试本地 broker。检查点不可达返回 503，数据库模式/认证摘要不匹配返回 409。每次请求由服务端环境决定模式，前端仅显示结果。
+6. 已建硬件库标记属于受保护状态，切换到 demo 即使提供同一检查点和状态密钥也会拒绝打开。切换模式并不能迁移旧信封、账号凭据或审计链。正式历史数据的密钥重封装和检查点连续性迁移仍需独立验收。首轮硬件接入使用全新测试数据。
+
+前端与接口
+登录前 GET /api/cabinet/security-mode 仅公开模式标签。登录成功后 GET /api/cabinet/me 返回 key_mode、remote_keys_released 和 state_guard_enabled。硬件模式的远程资源成功释放并通过检查点校验后才显示“本次远程取钥成功”。hardware_verified 保留为 false，整机防 root 验收状态由实机报告确认。配置、凭据、资源内容与证明原文不会通过状态接口显示。页面访问失败后清理账号视图并显示服务错误。
+
+复验
+在 platform 目录运行 python -m pytest tests/test_cabinet_key_modes.py tests/test_cabinet_demo.py -q。新用例通过真实 HTTPS 检查点和内存资源客户端替身验证两条密钥路径、受保护的模式标记、已有登录失去远程资源后的拒绝。替身仅由 pytest 注入。Ubuntu 实机仍需执行有效证明、错误度量拒绝、KBS 停机、旧会话复查以及完整业务复验，记录 AS/KBS 策略与镜像摘要。
+
+存量演示库迁移演练（2026-11-16 更新）
+
+适用场景。已有 Mac 演示库及其最新独立检查点，目标为同一 namespace 和 HTTPS 检查点上的 hardware 模式。迁移覆盖资产、历史任务结果、旧版内嵌附件及外部附件分块的 DEK 信封。对象键、对象密文、模板绑定、资产 ID 和授权记录均沿用。账号内部凭据按新状态密钥重新加密，原密码仍可登录。审计事件保留原顺序和内容，先验证旧 MAC 链，再用新审计密钥认证，并追加含旧审计链头与源检查点摘要的迁移记录。所有旧登录会话统一失效，用户重新登录后按原额度、用途、撤销与截止时间访问。
+
+Ubuntu 离线步骤
+1. 停止使用该库的全部平台实例，备份当前数据库、旧配置和检查点的最新状态，确认迁移临时文件所在目录有至少一份完整 SQLite 副本的空间。在批准的可信来宾内提供受控迁移期间使用的旧演示密钥。旧环境已交付或可解开的历史数据仍具有原有暴露范围。
+2. 在独立信任节点升级 checkpoint_service.py，支持 /v1/rotate。保留现有 authority.db。KBS 提供新的 state-v1、audit-v1、operator-v1、kek-v1 和 checkpoint-v1。这里 checkpoint-v1 必须是全新的随机 32 字节 token。现有权威端在提交前继续使用旧 token，迁移命令通过旧 token 的授权和当前版本 CAS 一次提交新 token 摘要与新数据库摘要。禁止先手工更新 token 或重置 head。迁移前需信任旧演示库、旧凭据和原检查点。
+3. 在 platform 目录中使用目标硬件配置，SENSE_DATA_DIR 指向原平台数据目录。远程配置与旧配置使用同一检查点 URL 和 namespace。依据实际路径执行
+  export SENSE_CABINET_KEY_MODE=hardware
+  export SENSE_CABINET_ATTESTATION_CONFIG=/etc/cabinet/hardware.json
+  export SENSE_DATA_DIR=/var/lib/cabinet
+  python -m app.cabinet_admin migrate-demo-keys --source-checkpoint /run/cabinet-migration/old-checkpoint.json
+4. 命令持有平台文件锁，先验证源库，创建 0600 的同目录 hardware-migration.pending.db。逐个解封旧 DEK、远程重封装并回读验证。迁移在内存处理密钥。原始附件和分块内容无需重新上传。候选数据库完成并同步到磁盘后才向检查点提交切换，随后验证并原子替换 persistent.db。
+5. 中断后保持停机，保留 persistent.db、pending 文件及配置，重跑相同命令。检查点尚接受旧 token 时，命令验证源库后重新生成候选文件。检查点已切换时，命令只安装与新 head 完全匹配的候选库，或确认活动库已经迁移。重复执行不重复扣额、写审计或重封装。若新 head 与两份库均不匹配，保持停机，依据独立最新 head 恢复匹配备份。禁止手工提升旧快照、删除 pending 文件或切回演示模式处理恢复故障。
+6. 重新启动 hardware 平台，重新登录核对授权行、已用额度、被撤销主体拒绝访问、历史结果和附件可读、旧凭据拒绝访问检查点。记录迁移审计、检查点版本和脱敏验收结果。成功后撤除来宾中的旧密钥及其装载路径，按既有保留策略管理旧备份。对正式服务器仍需验证远程证明策略和硬件反例。
+
+Mac 合成演练
+在 platform 下运行 python -m pytest tests/test_cabinet_key_migration.py tests/test_cabinet_key_modes.py ../research/data_security_cabinet/test_state_guard.py -q。
+pytest 在临时目录构建合成账号、资产和真实 HTTPS 检查点。远程资源客户端和分块对象存储使用测试替身，业务授权、AES-GCM 信封处理、数据库提交、token 轮换和完整性验证都走实际实现。测试覆盖提交前 KBS 中断、提交后本地替换中断、重跑、旧状态拒绝、已用额度、撤销、历史结果和两种附件读取。Mac 演练不构成 Ubuntu 硬件证明或断电设备持久性验收。
+
+独立 Trustee 联调
+在 platform 下执行 bash scripts/accept_seaweed_key_migration.sh。该入口使用上游 KBS 及 kbs-client，通过 sample 证明实际取钥。Ubuntu 软件复验和机密来宾正式切换的条件、命令与通过指标见同目录《真实SeaweedFS大视频密钥迁移验收.txt》。

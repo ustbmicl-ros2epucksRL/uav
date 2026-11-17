@@ -1,0 +1,45 @@
+% !TeX program = xelatex
+% Publish with: sh build-cabinet-storage.sh cabinet-checkpoint-sequence
+\documentclass[tikz,border=4mm]{standalone}
+\usepackage[UTF8,fontset=fandol]{ctex}
+\usetikzlibrary{arrows.meta}
+\definecolor{ink}{HTML}{193448}
+\definecolor{accent}{HTML}{17635E}
+\definecolor{stop}{HTML}{913A35}
+\tikzset{actor/.style={draw=ink,fill=blue!4,rounded corners=2pt,minimum height=8mm,font=\small\bfseries},
+msg/.style={-{Stealth[length=2mm]},draw=ink},ret/.style={msg,dashed},
+label/.style={midway,above,fill=white,inner sep=1pt,font=\footnotesize}}
+\newcommand{\phase}[2]{\fill[teal!8] (-.4,#1-.23) rectangle (15.4,#1+.23);
+\node[anchor=west,font=\small\bfseries,text=accent] at (-.28,#1){#2};}
+\newcommand{\send}[5]{\draw[#1] (#2,#4)--node[label]{#5}(#3,#4);}
+\begin{document}
+\begin{tikzpicture}[x=1cm,y=-1cm,text=ink]
+\foreach \x/\name in {.6/所有者,3.1/主体 B,6.6/保险箱平台,10.3/本地 SQLite,14.4/独立检查点}{
+\draw[gray!55,dashed] (\x,.35)--(\x,17.05);
+\node[actor] at (\x,0){\name};}
+\phase{.93}{一　撤销前：B 已开启预览，数据库快照对应状态摘要 $D_0$}
+\send{msg}{.6}{6.6}{1.75}{撤销 B 的视频预览授权}
+\send{ret}{10.3}{6.6}{2.45}{复制当前状态到内存}
+\send{ret}{14.4}{6.6}{3.14}{应平台查询，返回当前版本 $v$ 和摘要 $D_0$}
+\node[anchor=west,fill=white,font=\footnotesize] at (2.2,3.77){平台重算状态 HMAC 并核对 $D_0$；在已校验副本中撤销 B，计算新摘要 $D_1$。};
+\phase{4.43}{二　提交撤销：检查点同时核对预期版本与前一摘要}
+\send{msg}{6.6}{14.4}{5.22}{条件更新：预期 $(v,D_0)$，拟登记 $D_1$}
+\send{ret}{14.4}{6.6}{5.93}{两项均匹配才推进至 $(v+1,D_1)$；冲突则拒绝提交}
+\send{msg}{6.6}{10.3}{6.63}{写回已撤销状态}
+\send{msg}{3.1}{6.6}{7.36}{旧流会话请求下一段}
+\send{ret,stop}{6.6}{3.1}{8.05}{授权已撤销，拒绝（403）}
+\phase{8.79}{三　仅恢复本地旧快照，B 再用旧流会话读取}
+\node[anchor=west,fill=white,font=\footnotesize] at (4.6,9.46){本地恢复到 $D_0$；独立检查点仍保存撤销后的最新记录。};
+\send{msg}{3.1}{6.6}{10.24}{再次请求视频区间}
+\send{ret}{10.3}{6.6}{10.95}{复制恢复后的状态}
+\send{msg}{6.6}{14.4}{11.65}{查询同一命名空间的最新记录}
+\send{ret}{14.4}{6.6}{12.35}{返回最新版本及最新摘要 $D_{\rm head}$}
+\node[anchor=west,fill=white,font=\footnotesize] at (3.15,13.00){平台重算得到 $D_0 \ne D_{\rm head}$，在执行旧授权前中止。};
+\send{ret,stop}{6.6}{3.1}{13.78}{状态冲突（409），无视频字节}
+\phase{14.49}{四　验证范围}
+\node[anchor=west,align=left,text width=15cm,fill=white,font=\footnotesize] at (0,15.57)
+{Mac 已验证：有效状态下撤销 B 会阻止旧流续读；恢复旧快照后，受保护读取返回 409。直接修改授权记录也会改变状态 HMAC，触发同一完整性检查。};
+\node[anchor=west,align=left,text width=15cm,fill=white,font=\footnotesize] at (0,16.67)
+{Ubuntu 实机待验证：在 SNP/TDX 来宾与异机检查点部署下复验篡改和回滚拒绝，并验证宿主 root 隔离及异常断电后的状态恢复。};
+\end{tikzpicture}
+\end{document}

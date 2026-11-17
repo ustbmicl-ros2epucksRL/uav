@@ -1,0 +1,9 @@
+/* Deterministic teaching models. They never write to planning or measured evidence. */
+(function(global){
+ const candidates=[{id:'A',cost:4,cells:[0,1,2,3,4,5,6]},{id:'B',cost:3,cells:[0,1,2,7,8]},{id:'C',cost:3,cells:[3,4,5,9,10]},{id:'D',cost:2,cells:[6,11]},{id:'E',cost:4,cells:[7,8,9,10,11]}];
+ function score(ids){const chosen=candidates.filter(c=>ids.includes(c.id));return {ids,cost:chosen.reduce((s,c)=>s+c.cost,0),cells:[...new Set(chosen.flatMap(c=>c.cells))].sort((a,b)=>a-b)};}
+ function plan(budget){let greedy=score([]);while(true){const options=candidates.filter(c=>!greedy.ids.includes(c.id)&&c.cost+greedy.cost<=budget).map(c=>({c,gain:c.cells.filter(x=>!greedy.cells.includes(x)).length/c.cost})).sort((a,b)=>b.gain-a.gain||a.c.id.localeCompare(b.c.id));if(!options.length||options[0].gain<=0)break;greedy=score([...greedy.ids,options[0].c.id]);}let best=score([]);for(let mask=0;mask<32;mask++){const r=score(candidates.filter((_,i)=>mask&(1<<i)).map(c=>c.id));if(r.cost<=budget&&(r.cells.length>best.cells.length||(r.cells.length===best.cells.length&&r.cost<best.cost)))best=r;}return {greedy,best};}
+ function coverage(height,targetHeight){const sensor={x:90,h:70},target={x:640,h:targetHeight},near=320,far=370;const rayMin=Math.min(sensor.h+(target.h-sensor.h)*(near-sensor.x)/(target.x-sensor.x),sensor.h+(target.h-sensor.h)*(far-sensor.x)/(target.x-sensor.x));return {blocked:height>=rayMin,rayHeight:rayMin};}
+ function arrivals(delay,offline){const frames=[0,1,2,3,4,5].filter(t=>!offline||t!==3).map(t=>({captured:t,arrived:t+(t===2?delay:0)}));const order=frames.slice().sort((a,b)=>a.arrived-b.arrived||a.captured-b.captured);return {frames,order,late:order.some((f,i)=>i>0&&f.captured<order[i-1].captured),missing:offline?1:0};}
+ const api={candidates,score,plan,coverage,arrivals};if(typeof module!=='undefined')module.exports=api;global.ResearchModels=api;
+})(typeof window!=='undefined'?window:globalThis);

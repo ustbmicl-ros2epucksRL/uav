@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>计算记录</title><link rel="stylesheet" href="static/style.css">
+<style>header a{color:#d4eaff}main{max-width:1200px;margin:auto;padding:24px}table{width:100%;border-collapse:collapse}th,td{padding:12px;text-align:left;border-bottom:1px solid #dce3ec}td button,td a{margin:4px}pre{white-space:pre-wrap;overflow:auto;max-height:480px;background:#eef3f7;padding:16px}#status{min-height:24px}.table-wrap{overflow-x:auto}</style></head>
+<body><header><div><h1>计算记录</h1><p>查看计算状态、输入快照与历史结果，按原输入重新计算。</p></div><a href="workbench">返回规划工作台</a></header>
+<main><p>重跑使用原场景和校正快照；算法或运行环境改变时需新建计算。载入工作台前会校验当前配置，应用设备方案仍需在工作台操作。</p>
+<label>场景 <select id="filter"><option value="">全部</option><option value="urban">建筑区</option><option value="corridor">物流廊道</option><option value="electromagnetic">复杂电磁区</option></select></label> <button id="refresh">刷新</button>
+<p id="status" role="status"></p><div class="table-wrap"><table><thead><tr><th>提交时间</th><th>场景 / 类型</th><th>状态</th><th>操作</th></tr></thead><tbody id="jobs"></tbody></table></div>
+<p><button id="previous">上一页</button> <span id="page"></span> <button id="next">下一页</button></p>
+<h2>输入与结果</h2><pre id="detail">选择一条记录查看详情。</pre></main>
+<script src="static/api-client.js?v=20261026" defer></script><script src="static/computations.js?v=20261026" defer></script></body></html>

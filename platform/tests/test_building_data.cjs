@@ -1,0 +1,9 @@
+const {test}=require('node:test'),assert=require('node:assert/strict');
+const modulePromise=import('../static/building-data.mjs');
+const ring=[[115.98,39.05],[115.981,39.05],[115.981,39.051],[115.98,39.05]];
+const collection=(properties={},coordinates=[ring],type='Polygon')=>({type:'FeatureCollection',features:[{type:'Feature',properties,geometry:{type,coordinates}}]});
+test('height tags remain unverified and levels are explicit estimates',async()=>{const {normalizeBuildings:n}=await modulePromise;assert.equal(n(collection({height:'12 m'}))[0].height,12);assert.match(n(collection({height:12}))[0].heightSource,/未测绘核验/);assert.equal(n(collection({'building:levels':4}))[0].height,12);assert.equal(n(collection())[0].estimated,true);});
+test('multipolygons and courtyards retain rings',async()=>{const {normalizeBuildings:n}=await modulePromise;assert.equal(n(collection({},[[ring,ring],[ring]],'MultiPolygon')).length,2);assert.equal(n(collection({},[ring,ring]))[0].rings.length,2);});
+test('reject projected coordinates, open rings, invalid heights and nonpolygons',async()=>{const {normalizeBuildings:n}=await modulePromise;assert.throws(()=>n(collection({},[[[400000,0],[1,0],[1,1],[400000,0]]])));assert.throws(()=>n(collection({},[[...ring.slice(0,3),[115.98,39.051]]])));assert.throws(()=>n(collection({height:-1})));assert.throws(()=>n(collection({},ring,'LineString')));});
+test('empty datasets stay empty rather than inventing buildings',async()=>{const {normalizeBuildings:n}=await modulePromise;assert.deepEqual(n({type:'FeatureCollection',features:[]}),[]);});
+test('GBA numeric heights retain model estimate provenance',async()=>{const {normalizeBuildings:n}=await modulePromise;const b=n(collection({height:13.75,height_estimated:true,height_source:'GlobalBuildingAtlas 模型估计（非测绘）'}))[0];assert.equal(b.height,13.75);assert.equal(b.estimated,true);assert.match(b.heightSource,/模型估计/);});

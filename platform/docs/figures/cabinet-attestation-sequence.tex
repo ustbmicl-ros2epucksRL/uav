@@ -1,0 +1,47 @@
+% !TeX program = xelatex
+% Publish with: sh build-cabinet-storage.sh cabinet-attestation-sequence
+\documentclass[tikz,border=4mm]{standalone}
+\usepackage[UTF8,fontset=fandol]{ctex}
+\usetikzlibrary{arrows.meta}
+\definecolor{ink}{HTML}{193448}
+\definecolor{accent}{HTML}{17635E}
+\definecolor{stop}{HTML}{913A35}
+\tikzset{actor/.style={draw=ink,fill=blue!4,rounded corners=2pt,minimum height=8mm,font=\small\bfseries},
+msg/.style={-{Stealth[length=2mm]},draw=ink},ret/.style={msg,dashed},
+label/.style={midway,above,fill=white,inner sep=1pt,font=\footnotesize}}
+\newcommand{\phase}[2]{\fill[teal!8] (-.4,#1-.23) rectangle (15.4,#1+.23);
+\node[anchor=west,font=\small\bfseries,text=accent] at (-.28,#1){#2};}
+\newcommand{\send}[5]{\draw[#1] (#2,#4)--node[label]{#5}(#3,#4);}
+\begin{document}
+\begin{tikzpicture}[x=1cm,y=-1cm,text=ink]
+\foreach \x/\name in {0.7/预览主体,5/平台与取钥客户端,10.1/Trustee KBS,14.3/Trustee AS}{
+\draw[gray!55,dashed] (\x,.35)--(\x,16.15);
+\node[actor] at (\x,0){\name};}
+\phase{.9}{一　一次预览区间请求可触发多次取钥}
+\send{msg}{.7}{5}{1.67}{请求视频字节区间}
+\node[align=left,anchor=west,fill=white,font=\footnotesize] at (5.17,1.76)
+{平台生成预览 ID，每次取钥另生成调用 ID。\\以下展示其中一次视频解封取钥。};
+\send{msg}{5}{10.1}{2.8}{建立独立证明会话}
+\send{ret}{10.1}{5}{3.56}{返回会话凭据与随机挑战}
+\phase{4.16}{二　Mac 已验证：将请求标识绑定至 sample 证据}
+\node[align=left,anchor=west,fill=white,font=\footnotesize] at (1.12,4.95)
+{绑定摘要覆盖预览 ID、调用 ID、解封操作和密钥资源路径。\\客户端将摘要写入本次 sample 证据，并绑定挑战与临时公钥。};
+\send{msg}{5}{10.1}{6.08}{在原会话中提交证明}
+\send{msg}{10.1}{14.3}{6.84}{送验证据与运行时数据}
+\send{ret}{14.3}{10.1}{7.60}{验证通过，签发证明结果}
+\send{ret}{10.1}{5}{8.36}{转交签名证明结果（EAR）}
+\phase{8.97}{三　Mac 已验证：按策略释放密钥并返回视频区间}
+\send{msg}{5}{10.1}{9.78}{验签并核对绑定后，在原会话请求 KEK}
+\send{ret}{10.1}{5}{10.54}{策略放行，向临时公钥加密返回 KEK}
+\send{ret}{5}{.7}{11.32}{解封块密钥，返回区间（206）}
+\node[align=left,anchor=west,fill=white,font=\footnotesize] at (5.18,11.47)
+{审计按两个 ID、会话及 EAR 摘要核对认证、证明和资源访问记录。};
+\phase{12.19}{四　失败分支：已有预览流的下一次读取同样受控}
+\send{ret,stop}{14.3}{10.1}{13.02}{AS 拒绝证据，无有效 EAR}
+\send{ret,stop}{10.1}{5}{13.78}{证明失败，或资源策略拒绝释放 KEK}
+\node[align=left,anchor=west,fill=white,font=\footnotesize] at (5.2,14.32){KBS 断网时，客户端无法完成远程取钥。};
+\send{ret,stop}{5}{.7}{15.05}{停止读取，返回 503}
+\node[align=left,anchor=west,fill=white,font=\footnotesize] at (.1,16.12)
+{Mac 已验证 sample 会话并发关联、KBS 策略拒绝和停服，失败时不回退至演示密钥。\\Ubuntu 实机待验证 SNP/TDX 硬件证据、错误证据拒绝、度量策略及断网后的业务拒绝。};
+\end{tikzpicture}
+\end{document}

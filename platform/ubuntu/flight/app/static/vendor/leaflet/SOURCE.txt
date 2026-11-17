@@ -1,0 +1,5 @@
+Leaflet 1.9.4
+Source: https://github.com/Leaflet/Leaflet/tree/v1.9.4
+Distribution: https://unpkg.com/leaflet@1.9.4/dist/
+License: BSD-2-Clause; full notice in LICENSE
+Downloaded 2026-10-06; served locally by the flight service.

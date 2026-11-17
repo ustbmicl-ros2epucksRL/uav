@@ -1,0 +1,72 @@
+services:
+  planning:
+    build:
+      context: ..
+      dockerfile: ubuntu/planning/Dockerfile
+    environment:
+      SENSE_DATA_DIR: /var/lib/sensing
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8767/api/scenes')"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
+    volumes:
+      - planning-data:/var/lib/sensing
+    ports:
+      - "8767:8767"
+
+  flight:
+    build:
+      context: ..
+      dockerfile: ubuntu/flight/Dockerfile
+    environment:
+      SENSE_DATA_DIR: /var/lib/sensing
+      FLIGHT_DATA_DIR: /var/lib/flight
+    volumes:
+      - planning-data:/var/lib/sensing
+      - flight-data:/var/lib/flight
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8772/health')"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+      start_period: 3s
+    ports:
+      - "8772:8772"
+
+  lowair:
+    build:
+      context: ..
+      dockerfile: ubuntu/lowair/Dockerfile
+    volumes:
+      - lowair-data:/var/lib/lowair
+    environment:
+      LOWAIR_DATA_DIR: /var/lib/lowair
+      FLIGHT_BASE_URL: http://flight:8772
+      PLANNING_BASE_URL: http://planning:8767
+    depends_on:
+      flight:
+        condition: service_healthy
+      planning:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8771/health')"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+      start_period: 3s
+    ports:
+      - "8771:8771"
+
+  tester:
+    build: ./tester
+    environment:
+      PLANNING_BASE_URL: http://planning:8767
+      FLIGHT_BASE_URL: http://flight:8772
+      LOWAIR_BASE_URL: http://lowair:8771
+
+volumes:
+  lowair-data:
+  planning-data:
+  flight-data:

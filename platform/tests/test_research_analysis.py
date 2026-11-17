@@ -1,0 +1,35 @@
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from app.research_analysis import router
+
+
+def test_research_routes_and_mount():
+    child = FastAPI()
+    child.include_router(router)
+    parent = FastAPI()
+    parent.mount('/network', child)
+    for app, prefix in [(child, ''), (parent, '/network')]:
+        with TestClient(app) as client:
+            response = client.get(prefix + '/research', follow_redirects=False)
+            assert response.headers['location'] == prefix + '/research/1'
+            for task in range(1, 6):
+                response = client.get(prefix + f'/research/{task}')
+                assert response.status_code == 200
+                assert f'<base href="{prefix}/">' in response.text
+            assert client.get(prefix + '/research/6').status_code == 404
+
+
+def test_research_evidence_and_pdf():
+    app = FastAPI()
+    app.include_router(router)
+    with TestClient(app) as client:
+        tasks = client.get('/api/research-analysis/tasks').json()
+        assert [t['id'] for t in tasks] == list(range(1, 6))
+        for task in tasks:
+            assert task['pages'] and task['scenes'] and task['solutions']
+            assert len(task['challenges']) == 3
+            for c in task['challenges']:
+                assert all(c[k] for k in ['problem', 'variable', 'baseline', 'metric', 'evidence', 'failure'])
+        pdf = client.get('/api/research-analysis/proposal')
+        assert pdf.status_code == 200
+        assert pdf.content.startswith(b'%PDF')

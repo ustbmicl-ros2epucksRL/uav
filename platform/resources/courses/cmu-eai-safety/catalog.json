@@ -1,0 +1,816 @@
+{
+  "id": "cmu-eai-safety",
+  "title": "具身人工智能安全",
+  "english_title": "Embodied Artificial Intelligence Safety",
+  "instructor": "卡内基梅隆大学 · 16-886",
+  "term": "Spring 2026",
+  "source": "https://abajcsy.github.io/embodied-ai-safety/",
+  "description": "安全过滤器、鲁棒控制、在线更新、潜空间安全、运行监控和不确定性。",
+  "downloaded_at": "2026-11-04",
+  "availability": "已收录 18 份公开课件/讲义。仅收录提供下载文件的课次；研讨和未发布课次请查看课程主页。",
+  "lessons": [
+    {
+      "id": "lecture-01",
+      "title": "课程导论",
+      "kind": "lecture",
+      "module": "具身智能安全",
+      "goal": "阅读原版讲义，记录核心概念、方法假设与待解决的问题。",
+      "resources": [
+        {
+          "id": "original",
+          "label": "英文原版",
+          "file": "lecture-01.pdf",
+          "pages": 51,
+          "source": "https://abajcsy.github.io/embodied-ai-safety/assets/pdfs/Lecture0_intro.pdf",
+          "sha256": "eea2cf7d80a5581dceecfb333850de798b208808902f06d3bcd51a0914238083"
+        },
+        {
+          "id": "zh-study",
+          "label": "中文学习译稿 · 总结与批注",
+          "file": "lecture-01-zh-study.pdf",
+          "pages": 52,
+          "source": "https://abajcsy.github.io/embodied-ai-safety/assets/pdfs/Lecture0_intro.pdf",
+          "sha256": "6193dece1713af17740603e704f406210b15e62f51240df4a59b2def97f1dc3e",
+          "source_page_map": {
+            "1": 2,
+            "2": 3,
+            "3": 4,
+            "4": 5,
+            "5": 6,
+            "6": 7,
+            "7": 8,
+            "8": 9,
+            "9": 10,
+            "10": 11,
+            "11": 12,
+            "12": 13,
+            "13": 14,
+            "14": 15,
+            "15": 16,
+            "16": 17,
+            "17": 18,
+            "18": 19,
+            "19": 20,
+            "20": 21,
+            "21": 22,
+            "22": 23,
+            "23": 24,
+            "24": 25,
+            "25": 26,
+            "26": 27,
+            "27": 28,
+            "28": 29,
+            "29": 30,
+            "30": 31,
+            "31": 32,
+            "32": 33,
+            "33": 34,
+            "34": 35,
+            "35": 36,
+            "36": 37,
+            "37": 38,
+            "38": 39,
+            "39": 40,
+            "40": 41,
+            "41": 42,
+            "42": 43,
+            "43": 44,
+            "44": 45,
+            "45": 46,
+            "46": 47,
+            "47": 48,
+            "48": 49,
+            "49": 50,
+            "50": 51,
+            "51": 52
+          },
+          "note": "机器辅助学习译稿，未逐句人工校对"
+        }
+      ],
+      "study_file": "lecture-01-study.json"
+    },
+    {
+      "id": "lecture-02",
+      "title": "序贯决策",
+      "kind": "lecture",
+      "module": "具身智能安全",
+      "goal": "阅读原版讲义，记录核心概念、方法假设与待解决的问题。",
+      "resources": [
+        {
+          "id": "original",
+          "label": "英文原版",
+          "file": "lecture-02.pdf",
+          "pages": 9,
+          "source": "https://abajcsy.github.io/embodied-ai-safety/assets/pdfs/Lecture1_sequential_decision_making.pdf",
+          "sha256": "d433cffac68686363b2ad23e166d458b760073e8a4c9926cded085195b13faea"
+        },
+        {
+          "id": "zh-study",
+          "label": "中文学习译稿 · 总结与批注",
+          "file": "lecture-02-zh-study.pdf",
+          "pages": 10,
+          "source": "https://abajcsy.github.io/embodied-ai-safety/assets/pdfs/Lecture1_sequential_decision_making.pdf",
+          "sha256": "03724dfc8488f556437bec9f6da56708d64efe6236e9158f82940f86d31c3498",
+          "source_page_map": {
+            "1": 2,
+            "2": 3,
+            "3": 4,
+            "4": 5,
+            "5": 6,
+            "6": 7,
+            "7": 8,
+            "8": 9,
+            "9": 10
+          },
+          "note": "机器辅助学习译稿，未逐句人工校对"
+        }
+      ],
+      "study_file": "lecture-02-study.json"
+    },
+    {
+      "id": "lecture-03",
+      "title": "安全控制与安全过滤器",
+      "kind": "lecture",
+      "module": "具身智能安全",
+      "goal": "阅读原版讲义，记录核心概念、方法假设与待解决的问题。",
+      "resources": [
+        {
+          "id": "original",
+          "label": "英文原版",
+          "file": "lecture-03.pdf",
+          "pages": 8,
+          "source": "https://abajcsy.github.io/embodied-ai-safety/assets/pdfs/Lecture2_safety_filtering.pdf",
+          "sha256": "640d8585057a2d6c2912775447f7ecea762227c0122456dbba86b2d22aa971ab"
+        },
+        {
+          "id": "zh-study",
+          "label": "中文学习译稿 · 总结与批注",
+          "file": "lecture-03-zh-study.pdf",
+          "pages": 9,
+          "source": "https://abajcsy.github.io/embodied-ai-safety/assets/pdfs/Lecture2_safety_filtering.pdf",
+          "sha256": "02b44a61c5bc99efb819bc525f094720dd0cbc755273b0bf9cca6e4630586004",
+          "source_page_map": {
+            "1": 2,
+            "2": 3,
+            "3": 4,
+            "4": 5,
+            "5": 6,
+            "6": 7,
+            "7": 8,
+            "8": 9
+          },
+          "note": "机器辅助学习译稿，未逐句人工校对"
+        }
+      ],
+      "study_file": "lecture-03-study.json"
+    },
+    {
+      "id": "lecture-04",
+      "title": "安全过滤器综合",
+      "kind": "lecture",
+      "module": "具身智能安全",
+      "goal": "阅读原版讲义，记录核心概念、方法假设与待解决的问题。",
+      "resources": [
+        {
+          "id": "original",
+          "label": "英文原版",
+          "file": "lecture-04.pdf",
+          "pages": 12,
+          "source": "https://abajcsy.github.io/embodied-ai-safety/assets/pdfs/Lecture3-4_safety_filter_synthesis.pdf",
+          "sha256": "2e8746318a1a51d2134cb13acdef74375a540c70da2785ca438713dbc5e4c237"
+        },
+        {
+          "id": "zh-study",
+          "label": "中文学习译稿 · 总结与批注",
+          "file": "lecture-04-zh-study.pdf",
+          "pages": 13,
+          "source": "https://abajcsy.github.io/embodied-ai-safety/assets/pdfs/Lecture3-4_safety_filter_synthesis.pdf",
+          "sha256": "2251c3242ff06e98e15f8ead8c68cea006033a5250f795281fe35e8005417879",
+          "source_page_map": {
+            "1": 2,
+            "2": 3,
+            "3": 4,
+            "4": 5,
+            "5": 6,
+            "6": 7,
+            "7": 8,
+            "8": 9,
+            "9": 10,
+            "10": 11,
+            "11": 12,
+            "12": 13
+          },
+          "note": "机器辅助学习译稿，未逐句人工校对"
+        }
+      ],
+      "study_file": "lecture-04-study.json"
+    },
+    {
+      "id": "lecture-05",
+      "title": "鲁棒安全",
+      "kind": "lecture",
+      "module": "具身智能安全",
+      "goal": "阅读原版讲义，记录核心概念、方法假设与待解决的问题。",
+      "resources": [
+        {
+          "id": "original",
+          "label": "英文原版",
+          "file": "lecture-05.pdf",
+          "pages": 11,
+          "source": "https://abajcsy.github.io/embodied-ai-safety/assets/pdfs/Lecture4-5_robust_safety_I.pdf",
+          "sha256": "ac9e62dc13cec68daa93e86abd7b72d7218b322de60bb123afb885a462bf02cc"
+        },
+        {
+          "id": "zh-study",
+          "label": "中文学习译稿 · 总结与批注",
+          "file": "lecture-05-zh-study.pdf",
+          "pages": 14,
+          "source": "https://abajcsy.github.io/embodied-ai-safety/assets/pdfs/Lecture4-5_robust_safety_I.pdf",
+          "sha256": "aa4df487b3cdad6348f08aa4cd3477abb76df591524498f107e32235f2b3aa0d",
+          "source_page_map": {
+            "1": 2,
+            "2": 3,
+            "3": 5,
+            "4": 6,
+            "5": 7,
+            "6": 9,
+            "7": 10,
+            "8": 11,
+            "9": 12,
+            "10": 13,
+            "11": 14
+          },
+          "note": "机器辅助学习译稿，未逐句人工校对"
+        }
+      ],
+      "study_file": "lecture-05-study.json"
+    },
+    {
+      "id": "lecture-06",
+      "title": "现代计算方法 I",
+      "kind": "lecture",
+      "module": "具身智能安全",
+      "goal": "阅读原版讲义，记录核心概念、方法假设与待解决的问题。",
+      "resources": [
+        {
+          "id": "original",
+          "label": "英文原版",
+          "file": "lecture-06.pdf",
+          "pages": 13,
+          "source": "https://abajcsy.github.io/embodied-ai-safety/assets/pdfs/Lecture7_computation_KEN.pdf",
+          "sha256": "86e65ae52ac9180f6adaed80deef8f5c72e843bd0f6c5fb6e3c05570f7621e69"
+        },
+        {
+          "id": "zh-study",
+          "label": "中文学习译稿 · 总结与批注",
+          "file": "lecture-06-zh-study.pdf",
+          "pages": 14,
+          "source": "https://abajcsy.github.io/embodied-ai-safety/assets/pdfs/Lecture7_computation_KEN.pdf",
+          "sha256": "0c58fe476d5ae282f2fe28f89b982ae1b966b32d99606027ee11b16cd410b164",
+          "source_page_map": {
+            "1": 2,
+            "2": 3,
+            "3": 4,
+            "4": 5,
+            "5": 6,
+            "6": 7,
+            "7": 8,
+            "8": 9,
+            "9": 10,
+            "10": 11,
+            "11": 12,
+            "12": 13,
+            "13": 14
+          },
+          "note": "机器辅助学习译稿，未逐句人工校对"
+        }
+      ],
+      "study_file": "lecture-06-study.json"
+    },
+    {
+      "id": "lecture-07",
+      "title": "现代计算方法 II",
+      "kind": "lecture",
+      "module": "具身智能安全",
+      "goal": "阅读原版讲义，记录核心概念、方法假设与待解决的问题。",
+      "resources": [
+        {
+          "id": "original",
+          "label": "英文原版",
+          "file": "lecture-07.pdf",
+          "pages": 10,
+          "source": "https://abajcsy.github.io/embodied-ai-safety/assets/pdfs/Lecture8_computation_KEN.pdf",
+          "sha256": "3bb0391c8e0978e69179ce17cd34033a81c2c04b5017d1319c4ae5c42490ac8f"
+        },
+        {
+          "id": "zh-study",
+          "label": "中文学习译稿 · 总结与批注",
+          "file": "lecture-07-zh-study.pdf",
+          "pages": 11,
+          "source": "https://abajcsy.github.io/embodied-ai-safety/assets/pdfs/Lecture8_computation_KEN.pdf",
+          "sha256": "6fca92076346db8c068269ddbb33ad28544f96a9abf67cf48d3385fbce462a4c",
+          "source_page_map": {
+            "1": 2,
+            "2": 3,
+            "3": 4,
+            "4": 5,
+            "5": 6,
+            "6": 7,
+            "7": 8,
+            "8": 9,
+            "9": 10,
+            "10": 11
+          },
+          "note": "机器辅助学习译稿，未逐句人工校对"
+        }
+      ],
+      "study_file": "lecture-07-study.json"
+    },
+    {
+      "id": "lecture-08",
+      "title": "在线安全更新（讲义）",
+      "kind": "lecture",
+      "module": "具身智能安全",
+      "goal": "阅读原版讲义，记录核心概念、方法假设与待解决的问题。",
+      "resources": [
+        {
+          "id": "original",
+          "label": "英文原版",
+          "file": "lecture-08.pdf",
+          "pages": 7,
+          "source": "https://abajcsy.github.io/embodied-ai-safety/assets/pdfs/Lecture8_online_updates.pdf",
+          "sha256": "2ed1e9a19658c125a2d624accb2adac9277feee2673fdc39e4f34c327ae97b76"
+        },
+        {
+          "id": "zh-study",
+          "label": "中文学习译稿 · 总结与批注",
+          "file": "lecture-08-zh-study.pdf",
+          "pages": 9,
+          "source": "https://abajcsy.github.io/embodied-ai-safety/assets/pdfs/Lecture8_online_updates.pdf",
+          "sha256": "8c741db6e643f5de4b62c54a8b39fe22ed10730fd93019340a0789d85c43767c",
+          "source_page_map": {
+            "1": 2,
+            "2": 3,
+            "3": 5,
+            "4": 6,
+            "5": 7,
+            "6": 8,
+            "7": 9
+          },
+          "note": "机器辅助学习译稿，未逐句人工校对"
+        }
+      ],
+      "study_file": "lecture-08-study.json"
+    },
+    {
+      "id": "lecture-09",
+      "title": "在线安全更新（课件）",
+      "kind": "lecture",
+      "module": "具身智能安全",
+      "goal": "阅读原版讲义，记录核心概念、方法假设与待解决的问题。",
+      "resources": [
+        {
+          "id": "original",
+          "label": "英文原版",
+          "file": "lecture-09.pdf",
+          "pages": 52,
+          "source": "https://abajcsy.github.io/embodied-ai-safety/assets/pdfs/Lecture8_online_updates_slides.pdf",
+          "sha256": "7042f978eb89c04174b4a2f1c3f51180c88e80b9e5a3f03a7676e78c97336b17"
+        },
+        {
+          "id": "zh-study",
+          "label": "中文学习译稿 · 总结与批注",
+          "file": "lecture-09-zh-study.pdf",
+          "pages": 53,
+          "source": "https://abajcsy.github.io/embodied-ai-safety/assets/pdfs/Lecture8_online_updates_slides.pdf",
+          "sha256": "f52eb804faac20dfa299027e03afcb3060b81d6448ad75d1339a6e0a10eb3b4c",
+          "source_page_map": {
+            "1": 2,
+            "2": 3,
+            "3": 4,
+            "4": 5,
+            "5": 6,
+            "6": 7,
+            "7": 8,
+            "8": 9,
+            "9": 10,
+            "10": 11,
+            "11": 12,
+            "12": 13,
+            "13": 14,
+            "14": 15,
+            "15": 16,
+            "16": 17,
+            "17": 18,
+            "18": 19,
+            "19": 20,
+            "20": 21,
+            "21": 22,
+            "22": 23,
+            "23": 24,
+            "24": 25,
+            "25": 26,
+            "26": 27,
+            "27": 28,
+            "28": 29,
+            "29": 30,
+            "30": 31,
+            "31": 32,
+            "32": 33,
+            "33": 34,
+            "34": 35,
+            "35": 36,
+            "36": 37,
+            "37": 38,
+            "38": 39,
+            "39": 40,
+            "40": 41,
+            "41": 42,
+            "42": 43,
+            "43": 44,
+            "44": 45,
+            "45": 46,
+            "46": 47,
+            "47": 48,
+            "48": 49,
+            "49": 50,
+            "50": 51,
+            "51": 52,
+            "52": 53
+          },
+          "note": "机器辅助学习译稿，未逐句人工校对"
+        }
+      ],
+      "study_file": "lecture-09-study.json"
+    },
+    {
+      "id": "lecture-10",
+      "title": "潜空间安全（讲义）",
+      "kind": "lecture",
+      "module": "具身智能安全",
+      "goal": "阅读原版讲义，记录核心概念、方法假设与待解决的问题。",
+      "resources": [
+        {
+          "id": "original",
+          "label": "英文原版",
+          "file": "lecture-10.pdf",
+          "pages": 10,
+          "source": "https://abajcsy.github.io/embodied-ai-safety/assets/pdfs/Lecture9-10_latent_space_safety.pdf",
+          "sha256": "91d8ff6b2e9e53abeab197f3e163838b95d5b4d8d31453f55e5f1d1dc3a25e1c"
+        },
+        {
+          "id": "zh-study",
+          "label": "中文学习译稿 · 总结与批注",
+          "file": "lecture-10-zh-study.pdf",
+          "pages": 14,
+          "source": "https://abajcsy.github.io/embodied-ai-safety/assets/pdfs/Lecture9-10_latent_space_safety.pdf",
+          "sha256": "8c15cf19e28b5919fb26131cebfced03e78fbfbd82f1176308f49fce23937608",
+          "source_page_map": {
+            "1": 2,
+            "2": 3,
+            "3": 4,
+            "4": 6,
+            "5": 7,
+            "6": 9,
+            "7": 10,
+            "8": 11,
+            "9": 12,
+            "10": 14
+          },
+          "note": "机器辅助学习译稿，未逐句人工校对"
+        }
+      ],
+      "study_file": "lecture-10-study.json"
+    },
+    {
+      "id": "lecture-11",
+      "title": "潜空间安全（演示课件）",
+      "kind": "lecture",
+      "module": "具身智能安全",
+      "goal": "阅读原版讲义，记录核心概念、方法假设与待解决的问题。",
+      "resources": [
+        {
+          "id": "original",
+          "label": "英文原版",
+          "file": "lecture-11.pdf",
+          "pages": 23,
+          "source": "https://abajcsy.github.io/embodied-ai-safety/assets/pdfs/Lecture10_latent_space_safety_demos.pdf",
+          "sha256": "9043e76668ef9be8b6eb1f8baa5da39d94b8b287c3b9afbe35fb78c63b7ee969"
+        },
+        {
+          "id": "zh-study",
+          "label": "中文学习译稿 · 总结与批注",
+          "file": "lecture-11-zh-study.pdf",
+          "pages": 24,
+          "source": "https://abajcsy.github.io/embodied-ai-safety/assets/pdfs/Lecture10_latent_space_safety_demos.pdf",
+          "sha256": "56d5eca5c376e130531429cb34066d148172a9511a75ff503042375d11943d6c",
+          "source_page_map": {
+            "1": 2,
+            "2": 3,
+            "3": 4,
+            "4": 5,
+            "5": 6,
+            "6": 7,
+            "7": 8,
+            "8": 9,
+            "9": 10,
+            "10": 11,
+            "11": 12,
+            "12": 13,
+            "13": 14,
+            "14": 15,
+            "15": 16,
+            "16": 17,
+            "17": 18,
+            "18": 19,
+            "19": 20,
+            "20": 21,
+            "21": 22,
+            "22": 23,
+            "23": 24
+          },
+          "note": "机器辅助学习译稿，未逐句人工校对"
+        }
+      ],
+      "study_file": "lecture-11-study.json"
+    },
+    {
+      "id": "lecture-12",
+      "title": "运行监控与回退（讲义）",
+      "kind": "lecture",
+      "module": "具身智能安全",
+      "goal": "阅读原版讲义，记录核心概念、方法假设与待解决的问题。",
+      "resources": [
+        {
+          "id": "original",
+          "label": "英文原版",
+          "file": "lecture-12.pdf",
+          "pages": 8,
+          "source": "https://abajcsy.github.io/embodied-ai-safety/assets/pdfs/Lecture11_runtime-monitoring-fallbacks.pdf",
+          "sha256": "ac521f56167f2b879bbd54d41f1319570d053880ca59ef35b1e456514828d243"
+        },
+        {
+          "id": "zh-study",
+          "label": "中文学习译稿 · 总结与批注",
+          "file": "lecture-12-zh-study.pdf",
+          "pages": 9,
+          "source": "https://abajcsy.github.io/embodied-ai-safety/assets/pdfs/Lecture11_runtime-monitoring-fallbacks.pdf",
+          "sha256": "026d2ff303c571046d258aadfd861e575f7c0bbd31b6acb61e5900d41bfba1bf",
+          "source_page_map": {
+            "1": 2,
+            "2": 3,
+            "3": 4,
+            "4": 5,
+            "5": 6,
+            "6": 7,
+            "7": 8,
+            "8": 9
+          },
+          "note": "机器辅助学习译稿，未逐句人工校对"
+        }
+      ],
+      "study_file": "lecture-12-study.json"
+    },
+    {
+      "id": "lecture-13",
+      "title": "运行监控与回退（演示课件）",
+      "kind": "lecture",
+      "module": "具身智能安全",
+      "goal": "阅读原版讲义，记录核心概念、方法假设与待解决的问题。",
+      "resources": [
+        {
+          "id": "original",
+          "label": "英文原版",
+          "file": "lecture-13.pdf",
+          "pages": 26,
+          "source": "https://abajcsy.github.io/embodied-ai-safety/assets/pdfs/Lecture11_runtime-monitoring-fallbacks_demos.pdf",
+          "sha256": "9b0f7e7e89335880aef3cea58e27f5619238dae37f1c88107df0c4b753118029"
+        },
+        {
+          "id": "zh-study",
+          "label": "中文学习译稿 · 总结与批注",
+          "file": "lecture-13-zh-study.pdf",
+          "pages": 27,
+          "source": "https://abajcsy.github.io/embodied-ai-safety/assets/pdfs/Lecture11_runtime-monitoring-fallbacks_demos.pdf",
+          "sha256": "3129534eede7af3d37e5b45465fb1982e70af8bf9d25e451016102e0f67791e2",
+          "source_page_map": {
+            "1": 2,
+            "2": 3,
+            "3": 4,
+            "4": 5,
+            "5": 6,
+            "6": 7,
+            "7": 8,
+            "8": 9,
+            "9": 10,
+            "10": 11,
+            "11": 12,
+            "12": 13,
+            "13": 14,
+            "14": 15,
+            "15": 16,
+            "16": 17,
+            "17": 18,
+            "18": 19,
+            "19": 20,
+            "20": 21,
+            "21": 22,
+            "22": 23,
+            "23": 24,
+            "24": 25,
+            "25": 26,
+            "26": 27
+          },
+          "note": "机器辅助学习译稿，未逐句人工校对"
+        }
+      ],
+      "study_file": "lecture-13-study.json"
+    },
+    {
+      "id": "lecture-14",
+      "title": "不确定性量化 I",
+      "kind": "lecture",
+      "module": "具身智能安全",
+      "goal": "阅读原版讲义，记录核心概念、方法假设与待解决的问题。",
+      "resources": [
+        {
+          "id": "original",
+          "label": "英文原版",
+          "file": "lecture-14.pdf",
+          "pages": 10,
+          "source": "https://abajcsy.github.io/embodied-ai-safety/assets/pdfs/Lecture12_uq_pt1-F26.pdf",
+          "sha256": "40cf1bade6845a2fccd823c1ada6c32f3f2837d54626f3d9a167261a9256d908"
+        },
+        {
+          "id": "zh-study",
+          "label": "中文学习译稿 · 总结与批注",
+          "file": "lecture-14-zh-study.pdf",
+          "pages": 14,
+          "source": "https://abajcsy.github.io/embodied-ai-safety/assets/pdfs/Lecture12_uq_pt1-F26.pdf",
+          "sha256": "41e619af7b6bab7f1563ed97633d9df6ef1983ac70c0d7bd1e4f75ba55c31e5b",
+          "source_page_map": {
+            "1": 2,
+            "2": 3,
+            "3": 4,
+            "4": 5,
+            "5": 7,
+            "6": 8,
+            "7": 9,
+            "8": 11,
+            "9": 13,
+            "10": 14
+          },
+          "note": "机器辅助学习译稿，未逐句人工校对"
+        }
+      ],
+      "study_file": "lecture-14-study.json"
+    },
+    {
+      "id": "lecture-15",
+      "title": "不确定性量化 II",
+      "kind": "lecture",
+      "module": "具身智能安全",
+      "goal": "阅读原版讲义，记录核心概念、方法假设与待解决的问题。",
+      "resources": [
+        {
+          "id": "original",
+          "label": "英文原版",
+          "file": "lecture-15.pdf",
+          "pages": 9,
+          "source": "https://abajcsy.github.io/embodied-ai-safety/assets/pdfs/Lecture13_uq_pt2-F26.pdf",
+          "sha256": "3fba462721539963b8600e3def2cc4d3c2400fdf983e63d0bcc70438ab0effd8"
+        },
+        {
+          "id": "zh-study",
+          "label": "中文学习译稿 · 总结与批注",
+          "file": "lecture-15-zh-study.pdf",
+          "pages": 13,
+          "source": "https://abajcsy.github.io/embodied-ai-safety/assets/pdfs/Lecture13_uq_pt2-F26.pdf",
+          "sha256": "b658a05a88ca51930ee15c533afe487cd7c8de1ddd609ae8e2144df7ef8fe4f1",
+          "source_page_map": {
+            "1": 2,
+            "2": 3,
+            "3": 5,
+            "4": 6,
+            "5": 7,
+            "6": 8,
+            "7": 10,
+            "8": 12,
+            "9": 13
+          },
+          "note": "机器辅助学习译稿，未逐句人工校对"
+        }
+      ],
+      "study_file": "lecture-15-study.json"
+    },
+    {
+      "id": "lecture-16",
+      "title": "系统级失效",
+      "kind": "lecture",
+      "module": "具身智能安全",
+      "goal": "阅读原版讲义，记录核心概念、方法假设与待解决的问题。",
+      "resources": [
+        {
+          "id": "original",
+          "label": "英文原版",
+          "file": "lecture-16.pdf",
+          "pages": 8,
+          "source": "https://abajcsy.github.io/embodied-ai-safety/assets/pdfs/Lecture14_system-level-failures.pdf",
+          "sha256": "b68bcc2ef5fef0e20a331d6f9b0c15c8a2d38e4b60105e0fe6d6326bda93ddc8"
+        },
+        {
+          "id": "zh-study",
+          "label": "中文学习译稿 · 总结与批注",
+          "file": "lecture-16-zh-study.pdf",
+          "pages": 10,
+          "source": "https://abajcsy.github.io/embodied-ai-safety/assets/pdfs/Lecture14_system-level-failures.pdf",
+          "sha256": "98f0a1860daab91a5eca290c3b79fd3fef6fb986c4d8cb7fabeaf45ef225d6a3",
+          "source_page_map": {
+            "1": 2,
+            "2": 3,
+            "3": 5,
+            "4": 6,
+            "5": 7,
+            "6": 8,
+            "7": 9,
+            "8": 10
+          },
+          "note": "机器辅助学习译稿，未逐句人工校对"
+        }
+      ],
+      "study_file": "lecture-16-study.json"
+    },
+    {
+      "id": "lecture-17",
+      "title": "分布内控制",
+      "kind": "lecture",
+      "module": "具身智能安全",
+      "goal": "阅读原版讲义，记录核心概念、方法假设与待解决的问题。",
+      "resources": [
+        {
+          "id": "original",
+          "label": "英文原版",
+          "file": "lecture-17.pdf",
+          "pages": 8,
+          "source": "https://abajcsy.github.io/embodied-ai-safety/assets/pdfs/Lecture15_controlling-inD.pdf",
+          "sha256": "1520a382f47a84e1f3b7a1ca3ddd422a13551f7b9165fd31852675a48a97c4b8"
+        },
+        {
+          "id": "zh-study",
+          "label": "中文学习译稿 · 总结与批注",
+          "file": "lecture-17-zh-study.pdf",
+          "pages": 10,
+          "source": "https://abajcsy.github.io/embodied-ai-safety/assets/pdfs/Lecture15_controlling-inD.pdf",
+          "sha256": "d6cc48b5e3abb74f9f37fd99f010b1af0b9868ff8ea0cc16d12a0d7f9ff55b59",
+          "source_page_map": {
+            "1": 2,
+            "2": 3,
+            "3": 4,
+            "4": 5,
+            "5": 6,
+            "6": 8,
+            "7": 9,
+            "8": 10
+          },
+          "note": "机器辅助学习译稿，未逐句人工校对"
+        }
+      ],
+      "study_file": "lecture-17-study.json"
+    },
+    {
+      "id": "lecture-18",
+      "title": "生成模型中的不确定性（研读课件）",
+      "kind": "lecture",
+      "module": "具身智能安全",
+      "goal": "阅读原版讲义，记录核心概念、方法假设与待解决的问题。",
+      "resources": [
+        {
+          "id": "original",
+          "label": "英文原版",
+          "file": "lecture-18.pdf",
+          "pages": 5,
+          "source": "https://abajcsy.github.io/embodied-ai-safety/assets/pdfs/Reading16-unc-in-genModels.pdf",
+          "sha256": "36249a4b447dc67d4a6a7981162afe630e3c4f3cc7c5146b81d478af69725902"
+        },
+        {
+          "id": "zh-study",
+          "label": "中文学习译稿 · 总结与批注",
+          "file": "lecture-18-zh-study.pdf",
+          "pages": 6,
+          "source": "https://abajcsy.github.io/embodied-ai-safety/assets/pdfs/Reading16-unc-in-genModels.pdf",
+          "sha256": "7be5eb1a63eea93b716a732b683cd17d69dad4f4e358ee460be23230ade0ff8c",
+          "source_page_map": {
+            "1": 2,
+            "2": 3,
+            "3": 4,
+            "4": 5,
+            "5": 6
+          },
+          "note": "机器辅助学习译稿，未逐句人工校对"
+        }
+      ],
+      "study_file": "lecture-18-study.json"
+    }
+  ],
+  "unavailable": []
+}

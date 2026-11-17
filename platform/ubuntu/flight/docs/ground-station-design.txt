@@ -1,0 +1,108 @@
+8772 地面站：开源选型、交互设计与实现
+核查日期：2026-10-06
+
+一、选择
+保留同一平台中的飞控服务和业务下发接口，以 Leaflet 1.9.4 实际构建网页地图，
+参考 QGroundControl 的 FlyView/PlanView 工作流；页面和业务适配代码为本项目编写。
+不是将 QGroundControl 桌面程序移植成网页，也没有将 Cockpit 整体接入当前平台。
+
+候选与代码检查
+QGroundControl
+  源码：https://github.com/mavlink/qgroundcontrol
+  检查：https://github.com/mavlink/qgroundcontrol/blob/master/src/FlyView/FlyView.qml
+        https://github.com/mavlink/qgroundcontrol/blob/master/src/PlanView/PlanView.qml
+  Qt/QML；FlyView 组合地图、仪表、活动飞机和视频，PlanView 管理航点编辑、围栏和上传。
+  本项目参考其地图中心的飞行/规划双工作流、当前飞机选择与上传前检查。
+  许可证官方说明：.github/COPYING.md（Apache-2.0 / GPLv3 双许可及 Qt 使用条件）。
+  不直接复用其 QML 或底层飞控代码。以后需要现场原生地面站时可独立连接 MAVLink。
+
+Mission Planner
+  源码：https://github.com/ArduPilot/MissionPlanner
+  检查：README.md、COPYING.txt。
+  C#/.NET，ArduPilot 原生地面站，GPLv3。适合现场运维，不直接适配当前 FastAPI 网页。
+
+Cockpit
+  源码：https://github.com/bluerobotics/cockpit
+  检查：README.md、LICENSE.md。
+  浏览器/桌面地面站，具有航线、视频和遥测；连接路径涉及 mavlink2rest 和视频管理器。
+  本项目目前的仿真 REST 接口不匹配，需要更换/增加传输适配。
+  LICENSE.md 的 SPDX 为 AGPL-3.0-only OR 自定义许可，正文 GPLv3 表述与 SPDX 不一致；
+  本次仅参考产品能力，未拷贝该项目代码或部署其发行版。
+
+Leaflet（实际采用）
+  https://github.com/Leaflet/Leaflet
+  固定 1.9.4 稳定版本，BSD-2-Clause，JS/CSS/许可证在 app/static/vendor/leaflet/。
+  检查地图、TileLayer、LayerGroup、Polyline、Polygon、可拖动 Marker、GridLayer 接口。
+  库资源本地托管；运行时不从 CDN 加载脚本。
+  在线街道底图 https://tile.openstreetmap.org/{z}/{x}/{y}.png，保留贡献者归属标注。
+  卫星底图：Esri World Imagery，源数据归属 Esri、Vantor、Earthstar Geographics 与 GIS User Community。
+  查询来源 https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer?f=pjson
+  底图数据不是 Leaflet 开源代码的一部分。卫星/街道均为在线服务，离线网格不请求瓦片。
+  按 https://operations.osmfoundation.org/policies/tiles/ 不批量抓取或离线预下载公共瓦片。
+  当前访问失败可切换本地 GridLayer 坐标网格；它不是缓存的街道或卫星底图。
+
+二、平台关系
+业务功能（8771）审批和调度 → 原 mission/command 接口 → 飞控服务（8772）执行。
+地面站同样调用这组接口，不另造审批链，不改申请书研究主线。
+感知网络规划与地面站同在 8772，页面是 /network/。它计算感知网络部署，不向飞机发指令。地面站航线不是感知设备网络布局。
+
+三、界面结构
+顶栏：飞行态势 / 航线规划 / 记录回放、仿真标识、链路状态、地图设置、平台入口。
+左栏：两架飞机和状态、电量、飞手/载荷、当前任务进度、地图图层。
+中心：卫星影像、街道底图或离线坐标网格、飞机航向、起点、航线、轨迹、围栏、吊舱投影。
+       可切换三维：卫星底图保留。高于巡航高度的合成建筑画成斜视体块，能看见顶面、明暗不同的侧面和地面轮廓，并标高度。
+       更矮的建筑仍是平面轮廓。航线按自身高度画出，起飞和降落为竖直段。
+       拖动只旋转立面，滚轮缩放地图。加点仍在二维。它不是测绘模型。
+       平移缩放、全域/当前飞机定位、跟随、光标经纬度、比例尺与数据归属。
+       桌面右下概览图显示围栏、机队和主图当前窗口，手机隐藏概览以保留操作空间。
+右栏：
+  飞行：人工地平仪、滚转/俯仰/航向、模式关联的解锁/上锁/执行/返航/降落、吊舱、事件。
+  航线：选定场景、终点和巡航高度后，生成从原点起飞、绕开更高合成建筑、在终点降落的航线；
+        也可点选/拖动航点。检查围栏和合成建筑，估计长度与恒速耗时，再上传。JSON 可导入导出。
+        合成建筑不是测绘障碍，空域许可仍不检查。航线不改感知站址。
+  记录：按采样点回放、历史姿态与位置、轨迹高度剖面、操作回执、JSON 导出。
+底栏：服务端仿真时钟运行/暂停、1/2/5 倍、手动推进、锚点说明、最近遥测更新时间。
+手机：地图和操作区纵向排列，顶栏直接选飞机。
+
+四、坐标与真实性
+本地坐标 X 东、Y 北、Z 上；地理展示使用可配置的 WGS84 示意锚点。
+默认 (39.05,115.98) 仅演示雄安附近的底图，不是设备测绘或飞行器 GPS。
+本地米制到经纬度为小范围球面近似，未来真机接入须使用实际定位与测绘原点。
+服务端保存锚点至 FLIGHT_DATA_DIR/map.json；飞行中拒绝改变锚点。
+地图显示仿真围栏 0–2000 m / 0–300 m，不把它描述成正式批准空域。
+吊舱投影按高度和指向计算；没有视频或目标识别结果。
+当前飞行运输适配仍是 simulator。MAVLink 只监听心跳和位置，mavlink_commands 固定为 false。
+三秒内没有心跳则 mavlink_connected=false，页面回到“仿真在线”，不把仿真飞机说成已接入数传。
+
+五、状态与接口
+保留：vehicles、telemetry、track、gimbal、mission、command、tick、reset。
+新增：
+  GET /api/station                 能力、地图锚点、运输适配与限制
+  GET /api/station/state           机队遥测、地理位置、时钟与最近操作回执
+  PUT /api/station/map             修改并持久化地图锚点
+  PUT /api/simulation              服务端时钟运行/暂停与倍速
+  GET /api/mavlink                 数传监听状态。connected 只表示三秒内收到飞控心跳
+  PUT /api/mavlink                 设置 udpin/udpout/tcp/serial 地址并开始或停止监听
+  POST /api/vehicles/{id}/mission/preview  恒速航程估计、逐点围栏诊断
+服务器寿命内异步任务推进仿真，浏览器只轮询遥测；网页关闭不停止运行中的时钟。
+时钟运行时禁止手动 tick，避免同时推进两次。模拟器更新与快照用 RLock 同步。
+上传前检查仿真围栏，以及所选场景里高于航段的合成建筑。模式为定点或引导才可上传；未解锁或无航线不可执行。
+前端连接中断、请求中、历史回放时禁用控制；后端仍核查飞机状态。
+历史回放只替换位置、姿态与推算地速；电量/任务为实时值，页面明确说明。
+航线、轨迹和操作回执目前保存在服务进程内存中，重启会清空；可导出 JSON 留存。
+本地草案按飞机保存于浏览器。导入文件锚点不一致时拒绝直接应用。
+数传监听已实现：设置里填写连接地址后只收 HEARTBEAT 与 GLOBAL_POSITION_INT。
+没有 pymavlink 或没有心跳时明确报未接入，不发送解锁、模式或航线。
+真机视频、生产身份权限，以及把指令写回飞控，仍未实现，不通过装饰性链接宣称接入。
+
+六、验证与交付
+后端 9 项测试、前端核心 3 项测试通过。
+本机 Chrome 完成卫星/街道地图、地图加点、航点拖动、航线检查/上传、解锁/执行、服务端时钟、
+轨迹回放、离线网格、手机布局/选机、完整任务结束检查，无 JavaScript 页面异常。
+截图与浏览器检查报告：outputs/ground-station/。
+单独启动：在 platform/ubuntu/flight 运行
+  ../../.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8772
+Ubuntu 容器仍按原 Dockerfile 打包 app，地图资源随 app/static 一并部署。
+容器可设置 FLIGHT_DATA_DIR=/data 并挂载目录，以保存地图锚点。
+
+已修复概览地图未初始化时添加多边形的异常，以及定时遥测刷新中断草案航点拖动的问题。

@@ -1,0 +1,19 @@
+{
+  "checked_at": "2026-11-04",
+  "repository": "https://github.com/embodied-ai-hku/DATA8010",
+  "tree_sha": "936a93f03727c79c20f49b546762e0b175d87620",
+  "truncated": false,
+  "public_files": [
+    "slides/Issac Sim Tutorial.pdf",
+    "slides/Lecture1.pdf",
+    "slides/Lecture2.pdf",
+    "slides/Lecture3.pdf",
+    "slides/Lecture4.pdf",
+    "slides/Lecture5.pdf",
+    "slides/Lecture6.pdf",
+    "slides/Lecture7.pdf",
+    "slides/Lecture8.pdf",
+    "slides/PyBullet Tutorial.pdf",
+    "slides/Tutorial_mujocometaworld.pdf"
+  ]
+}

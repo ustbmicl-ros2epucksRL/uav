@@ -1,0 +1,46 @@
+% !TeX program = xelatex
+% Publish with: sh build-cabinet-storage.sh cabinet-video-sequence
+\documentclass[tikz,border=4mm]{standalone}
+\usepackage[UTF8,fontset=fandol]{ctex}
+\usetikzlibrary{arrows.meta}
+\definecolor{ink}{HTML}{193448}
+\definecolor{accent}{HTML}{17635E}
+\definecolor{stop}{HTML}{913A35}
+\tikzset{actor/.style={draw=ink,fill=blue!4,rounded corners=2pt,minimum height=8mm,font=\small\bfseries},
+msg/.style={-{Stealth[length=2mm]},draw=ink},ret/.style={msg,dashed},
+label/.style={midway,above,fill=white,inner sep=1pt,font=\footnotesize}}
+\newcommand{\phase}[2]{\fill[teal!8] (-.4,#1-.23) rectangle (15.4,#1+.23);
+\node[anchor=west,font=\small\bfseries,text=accent] at (-.28,#1){#2};}
+\newcommand{\send}[5]{\draw[#1] (#2,#4)--node[label]{#5}(#3,#4);}
+\begin{document}
+\begin{tikzpicture}[x=1cm,y=-1cm,text=ink]
+\foreach \x/\name in {0.5/所有者,3/主体 A,5.4/主体 B,8.3/保险箱平台,11.5/密文对象库,14.4/独立检查点}{
+\draw[gray!55,dashed] (\x,.35)--(\x,17.2);
+\node[actor] at (\x,0){\name};}
+\phase{1}{一　同一份视频分块入柜}
+\send{msg}{.5}{8.3}{1.85}{按模板上传视频，分块大小为 1 MiB}
+\send{msg}{8.3}{11.5}{2.62}{逐块加密并写入密文}
+\node[fill=white,font=\footnotesize,anchor=east] at (8.2,3.12){平台保存块索引、摘要和 DEK 信封};
+\send{msg}{8.3}{14.4}{3.82}{提交入柜后的状态版本与摘要}
+\phase{4.43}{二　同一资产分别授权，按各自约定预览}
+\send{msg}{.5}{8.3}{5.28}{授予 A 巡检复核权限，授予 B 限次协查权限}
+\send{msg}{8.3}{14.4}{6.01}{提交两项授权的最新状态}
+\send{msg}{3}{8.3}{6.77}{A 在复核期内请求视频区间}
+\send{ret}{8.3}{3}{7.51}{校验通过，返回所请求字节（206）}
+\send{msg}{5.4}{8.3}{8.25}{B 在额度内预览}
+\send{ret}{8.3}{5.4}{8.97}{返回区间（206）}
+\node[anchor=west,text width=6.3cm,align=left,fill=white,font=\footnotesize] at (8.52,8.12)
+{每次读取均核对检查点、身份与授权，再读取对应密文块并取钥解封。额度在开启预览时计量。};
+\phase{9.67}{三　撤销 B 后，旧流会话也须重新校验}
+\send{msg}{.5}{8.3}{10.54}{所有者撤销 B 的协查授权}
+\send{msg}{8.3}{14.4}{11.31}{提交含撤销标志的新版本与摘要}
+\send{msg}{5.4}{8.3}{12.08}{B 以旧会话续读}
+\send{ret,stop}{8.3}{5.4}{12.83}{拒绝读取（403）}
+\phase{13.54}{四　恢复撤销前的平台快照后，阻止读取}
+\node[anchor=east,fill=white,font=\footnotesize] at (8.2,14.25){平台 SQLite 已恢复为旧快照，独立检查点保留最新状态};
+\send{msg}{5.4}{8.3}{15.05}{B 再次请求读取}
+\send{msg}{8.3}{14.4}{15.79}{核对本地状态与权威记录}
+\send{ret}{14.4}{8.3}{16.48}{最新版本与摘要不匹配}
+\send{ret,stop}{8.3}{5.4}{17.18}{阻止读取（409）}
+\end{tikzpicture}
+\end{document}

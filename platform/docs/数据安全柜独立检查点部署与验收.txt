@@ -1,0 +1,40 @@
+最新持久化版本说明：请优先阅读同目录《数据安全柜持久化运行与恢复.txt》。下文单会话生命周期为历史版本记录，不再适用于新持久系统。
+
+数据安全柜独立检查点接入（2026-11-12）
+
+1. 根因与修复
+Python 3.14 实测报 CERTIFICATE_VERIFY_FAILED: Missing Authority Key Identifier。
+原生成证书仅有 BasicConstraints/SAN/EKU。已补充 SKI、AKI 和 critical KeyUsage（CA 允许签发，叶证书不允许签发）。保持默认严格 TLS、证书链和主机名校验；未使用跳过验证或明文降级。旧测试/部署证书需要重新签发。
+
+2. 接入范围
+设置 SENSE_CABINET_CHECKPOINT_CONFIG 后，新建平台会话会用 StateGuard 初始化全新数据库，并在入柜、授权、执行、结果读取、撤销、状态/审计读取的数据库事务中验证完整状态 HMAC，与独立 HTTPS 检查点比对并用 CAS 推进版本。范围包括授权、身份、资产、任务、审计和 schema。
+篡改/回滚返回 409；检查点不可用、错误凭据或 TLS 失败返回 503；没有自动降级或重置操作。前端显示后端报告的启用状态；状态校验失败时清空旧展示。
+未配置环境变量仍是明确标注的原软件演示。配置后要求外部服务可用。
+
+3. 部署（项目根目录执行；python 指平台虚拟环境）
+独立可信主机上准备全新目录：
+python research/data_security_cabinet/prepare_checkpoint.py --output /srv/cabinet-checkpoint/run01 --host checkpoint.example.internal --namespace platform-run01
+启动服务：
+python research/data_security_cabinet/checkpoint_service.py serve --db /srv/cabinet-checkpoint/run01/authority.db --host 0.0.0.0 --port 9443 --cert /srv/cabinet-checkpoint/run01/tls.pem --key /srv/cabinet-checkpoint/run01/tls.key
+DNS 必须与证书 SAN 匹配；联调可用 --host 127.0.0.1，但同机部署不具有独立信任域安全性。限制 9443 仅允许平台节点访问，服务由进程管理器启动并持久化 authority.db；本原型为单节点服务。
+将 ca.pem、token、state.key、platform.json 通过受控通道配置到平台，修改 JSON 中三个文件路径为平台本机绝对路径。token/state.key 为 32 字节二进制，不能替换成十六进制文本。不要复制 authority.db 或 tls.key 到平台。配置目录 0700、凭据文件 0600，不写进源码仓库。
+平台启动：
+SENSE_CABINET_CHECKPOINT_CONFIG=/secure/platform.json SENSE_DATA_DIR=/var/lib/sensing-demo bash platform/scripts/run.sh
+如启动脚本要求当前目录为 platform，先 cd platform 并使用 bash scripts/run.sh。
+访问 /data-cabinet（挂载方式 /network/data-cabinet），新建会话确认“独立检查点已启用”，完成入柜→授权 A/B→差异结果→撤销 A→拒绝 A→审计。
+
+4. 演示生命周期与恢复
+当前平台身份/会话仍为单进程内存演示；一个配置的空 namespace 只允许建立一次受保护会话。第二次新建、过期或进程重启不能重新初始化同一 namespace，返回拒绝。需要下一轮演示时，由独立主机管理员建立新的隔离目录/namespace/端口并更换配置。不得删除旧检查点或回退 authority.db 来恢复访问。
+这不是多会话生产部署或持久登录。平台临时数据库生命周期沿用第一期，不保存正式资产。
+CAS 成功但本地提交失败会锁定；不自动接受任一旧快照。只有匹配独立最新摘要的受控恢复才可继续，否则隔离调查。检查点磁盘、备份和管理员必须独立于平台；两端一起回滚不在此方案保护范围。
+本机制不能阻止控制平台进程的 root 获取本地密钥或绕过代码。真正防宿主 root 仍需 TEE 内运行授权/解密、远程证明和独立密钥释放；本期未完成该硬件验收。
+
+5. 验证
+从项目根目录：
+PYTHONPATH=platform python -m pytest platform/tests/test_cabinet_demo.py -q
+PYTHONPATH=research/data_security_cabinet python -m pytest research/data_security_cabinet -q
+测试需要允许本机 HTTPS 监听；不访问正式数据库。
+平台测试包含原软件闭环与真实 HTTPS 保护闭环：修改额度、扩大用途、恢复撤销标记、恢复撤销前快照均拒绝；正常 B 不受 A 撤销影响；检查点断连时执行、结果、状态均拒绝；已使用 namespace 不允许再次初始化。
+底层测试覆盖授权字段、身份/资产/schema 篡改、额度回滚、并发 CAS、响应丢失、错误凭据、结果读取及重启校验。OPA 依赖未配置时策略测试跳过，不代表硬件验证。
+
+本次结果：Python 3.14 环境平台 8 项通过；底层 23 项通过、11 个子测试通过、6 项 OPA 测试跳过；前端 JavaScript 语法检查通过。本轮未重新进行浏览器视觉验收，也未部署到实际独立硬件主机。离线部署工具由平台 HTTPS 集成测试实际调用验证。

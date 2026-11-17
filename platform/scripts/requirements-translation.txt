@@ -1,0 +1,2 @@
+# Offline PDF text-block extraction used by translate_courses.py.
+PyMuPDF==2.1

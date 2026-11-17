@@ -1,0 +1,75 @@
+% 编译：xelatex fig-05-低空资源与业务流程.tex
+\documentclass[tikz,border=14pt]{standalone}
+\usepackage[fontset=none]{ctex}
+\setCJKmainfont{Songti SC}
+\setCJKsansfont{Heiti SC}
+\usetikzlibrary{arrows.meta,fit,backgrounds}
+
+\definecolor{svc}{RGB}{29,106,79}
+\definecolor{svcfill}{RGB}{231,242,236}
+\definecolor{flt}{RGB}{138,75,8}
+\definecolor{fltfill}{RGB}{248,239,228}
+\definecolor{plan}{RGB}{31,78,121}
+\definecolor{planfill}{RGB}{232,238,245}
+\definecolor{muted}{RGB}{90,90,90}
+\definecolor{linec}{RGB}{180,176,168}
+
+\tikzset{
+  font=\small,
+  arr/.style={-{Latex[length=2.2mm]},line width=0.7pt,draw=svc},
+  box/.style={draw,rounded corners=2pt,align=center,inner sep=5pt},
+  note/.style={font=\footnotesize,text=muted,align=left}
+}
+
+\begin{document}
+\begin{tikzpicture}[
+  chip/.style={box,draw=flt!45,fill=fltfill,text width=3.15cm,minimum height=1.35cm,font=\small},
+  fuse/.style={box,align=left,text width=7.55cm,inner sep=7pt},
+  gate/.style={box,draw=svc,fill=svcfill,text width=2.05cm,minimum height=1.55cm,font=\footnotesize}
+]
+  \node[font=\large\bfseries,anchor=west] at (0,0.25) {低空资源与业务流程};
+  \node[note,anchor=west,text width=16.8cm] at (0,-0.35)
+    {业务功能内部。四类终端记在同一本台账里，批准时预留，下发时占用，结束时释放。};
+
+  \node[font=\bfseries,text=flt,anchor=west] (rt) at (0.2,-1.15) {低空资源台账};
+  \node[chip] (a) at (2.15,-2.45) {自动化机场\\{\scriptsize 可用 / 预留 / 占用 / 停用}};
+  \node[chip] (b) at (5.85,-2.45) {无人机\\{\scriptsize 空闲 / 预留 / 占用 / 离线}};
+  \node[chip] (c) at (9.55,-2.45) {挂载\\{\scriptsize 在机 / 预留 / 占用 / 未装}};
+  \node[chip] (d) at (13.25,-2.45) {飞手\\{\scriptsize 空闲 / 预留 / 执行中}};
+  \node[note,anchor=west] at (0.2,-3.45) {一架飞机绑定一个机场、一名飞手、一套任务载荷。飞行中不能更换挂载。};
+  \begin{scope}[on background layer]
+    \node[draw=flt,rounded corners=2pt,fit={(rt)(a)(d)(0.05,-3.7)},inner sep=7pt] {};
+  \end{scope}
+
+  \node[fuse,draw=plan,fill=planfill] (geo) at (4.15,-5.15) {%
+    {\bfseries\color{plan} 基础地理信息}\\[2pt]
+    与地面站共用锚点和底图\\
+    机场、航线保存东北天米坐标\\
+    围栏 0--2000\,m，高度 0--300\,m%
+  };
+  \node[fuse,draw=linec,fill=white] (net) at (12.35,-5.15) {%
+    {\bfseries 网络资源}\\[2pt]
+    下发前确认飞控在线\\
+    场景名称读取规划功能\\
+    审批人在页面填写姓名%
+  };
+
+  \node[font=\bfseries,text=svc,anchor=west] (pt) at (0.2,-7.05) {业务流程关口};
+  \node[gate] (s1) at (1.45,-8.55) {\textbf{建档}\\[2pt]绑定完整\\才能被申请};
+  \node[gate] (s2) at (4.15,-8.55) {\textbf{申请}\\[2pt]航线在围栏内\\尚不预留};
+  \node[gate] (s3) at (6.85,-8.55) {\textbf{审批}\\[2pt]无冲突则预留\\驳回不预留};
+  \node[gate] (s4) at (9.55,-8.55) {\textbf{下发}\\[2pt]定点且未解锁\\预留改为占用};
+  \node[gate] (s5) at (12.25,-8.55) {\textbf{回传}\\[2pt]遥测来自飞控\\不改绑定};
+  \node[gate] (s6) at (14.95,-8.55) {\textbf{释放}\\[2pt]完成或中止\\四项恢复空闲};
+  \draw[arr] (s1.east) -- (s2.west);
+  \draw[arr] (s2.east) -- (s3.west);
+  \draw[arr] (s3.east) -- (s4.west);
+  \draw[arr] (s4.east) -- (s5.west);
+  \draw[arr] (s5.east) -- (s6.west);
+  \node[note,anchor=west,text width=16.6cm] at (0.15,-9.75)
+    {同一架飞机、同一名飞手不能同时有两条未结束任务。地面站负责解锁和模式，业务页面不直接发飞控指令。};
+  \begin{scope}[on background layer]
+    \node[draw=svc,rounded corners=2pt,fit={(pt)(s1)(s6)(0.05,-10.05)},inner sep=7pt] {};
+  \end{scope}
+\end{tikzpicture}
+\end{document}

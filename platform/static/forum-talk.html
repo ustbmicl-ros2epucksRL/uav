@@ -1,0 +1,7 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>论坛演讲 · 具身智能</title><link rel="stylesheet" href="forum-talk.css"></head>
+<body><header><a href="../">返回演示平台</a><h1>资源受限具身智能体的在线自进化</h1><a id="download" href="talks/embodied-2026.pdf" download>下载 PDF</a></header>
+<main id="player"><div class="toolbar"><button id="prev" disabled aria-label="上一页">上一页</button><label>第 <input id="page" type="number" min="1" value="1" aria-label="页码"> / <span id="total">—</span> 页</label><button id="next" disabled aria-label="下一页">下一页</button><select id="catalog" aria-label="选择演讲章节"></select><button id="notes-toggle" aria-expanded="false" aria-controls="notes">讲稿</button><button id="fullscreen">全屏演讲</button></div>
+<div id="stage" tabindex="0" aria-label="幻灯片，使用左右方向键翻页"><p id="status" role="status">正在加载 PDF…</p><div id="canvas-host"></div></div>
+<aside id="notes" hidden><h2>本页讲稿</h2><div id="notes-content"></div></aside>
+</main><footer>← → / 空格翻页 · Home / End 首页末页 · F 全屏 · Esc 退出全屏 <span id="version"></span></footer><script type="module" src="forum-talk.js"></script></body></html>

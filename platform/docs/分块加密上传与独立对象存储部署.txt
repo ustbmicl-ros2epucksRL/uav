@@ -1,0 +1,79 @@
+后续更新（2026-11-13）：已增加独立 SeaweedFS 真实服务、一键部署、权限探测与迁移命令；请优先参照《真实对象存储部署与迁移验收.txt》。本文下方的 Moto 描述保留作为上一轮测试记录。
+
+数据保险箱：分块加密上传、断点续传与视频范围预览
+
+实现结构
+浏览器 → 登录/组织权限校验 → 检查点保护的上传会话及分块清单 → AES-GCM 分块加密 → 独立 S3 兼容对象存储。
+对象存储仅保存密文，不保存授权、解密密钥或公共预览链接。SQLite 保存模板版本/摘要、主体、附件绑定、分块序号/长度/摘要、随机对象键、密钥封装、预览会话和审计；这些表整体参与已有独立检查点 HMAC/CAS 校验。
+旧版 SQLite 附件保留原有受保护读取路径；新前端上传统一使用对象存储，不自动搬迁旧附件，不因对象存储失效降级到本地存储。
+
+上传与恢复
+每块 1 MiB，图片最多 8 MiB，视频最多 2 GiB，且不得超过已发布模板的 max_bytes。要提高旧模板上限，必须注册新版、独立审核并发布；不能修改旧版本。单节点预约容量 20 GiB，每所有者最多 16 个未完成会话。会话 24 小时有效，完成后的暂存绑定期限另计 24 小时。
+上传可乱序；同序号、同摘要重试幂等，已提交分块不能覆盖。新对象键每次随机生成，使用 S3 If-None-Match:* 禁止覆盖。对象写成功、检查点提交前故障只产生不可引用的孤立密文。
+前端显示服务器确认进度、暂停按钮、未完成会话列表。中断/服务重启后选择会话并重新选择原文件；先逐块计算 SHA-256 比较服务器已有摘要，再只上传缺少部分。浏览器不保存密钥或权限凭证到 localStorage。不同文件不得拼接复用旧会话。
+完成阶段重新读取并认证所有分块，计算全文件摘要，再验证媒体类型并原子登记可绑定附件。缺块、损坏、存储故障均不完成。未完成会话不能入柜或预览。
+图片使用 Pillow 完整校验；视频检查前 8 MiB 内的容器和编码元数据，要求 faststart/fragmented MP4 或头部包含必要元数据的 WebM。不是完整视频解码或恶意内容扫描，不能宣称每帧均有效。仅支持 H264/AAC MP4、VP8/VP9/Opus/Vorbis WebM。ffprobe 在无外部协议输入下运行。
+
+流式预览与安全语义
+POST 建立绑定登录 cookie 摘要、账号版本、附件、资产、授权的 5 分钟预览会话；开启一次消耗一次 preview 额度。统计/模型数据集授权不能创建附件预览。流 ID 不是独立 bearer 凭证，换主体或同主体重新登录都不能复用。
+GET /api/cabinet/streams/{id} 接受单一 Range，支持起止范围和后缀范围，每次最多返回 1 MiB（206 + Content-Range），浏览器视频播放器继续请求后续范围。图片由前端有界组合分块为 Blob。多范围或越界返回 416；不使用缓存验证绕过鉴权，不返回 304，不签发 S3 下载 URL。
+每次范围读取重新检查当前登录、账号组织状态、授权主体/用途/撤销/到期、源所有者状态、模板发布状态、资产绑定及独立检查点；逐块验证密文摘要、AAD、AEAD 标签和明文摘要。结果在检查点 CAS 成功后才作为有界 Response 释放。分块读取不重复扣次数，也不能绕过撤销；开启新会话仍检查剩余额度。
+并发请求由现有跨进程锁序列化；短暂锁冲突异步等待最多 5 秒，持续冲突返回 503 可重试。撤销提交后的新读取拒绝；已授权并开始返回的那一个有界响应以及已交付浏览器的数据无法追回。前端每 5 秒核验权限并清空失效预览。后端拒绝是安全边界，前端清空只是展示辅助。
+
+部署步骤（平台目录执行，正式服务先停机）
+1. 备份现有平台数据库和独立检查点的受控状态；沿用同一 namespace、state key 和检查点，不重建或重置已有 head。
+2. 安装依赖：python -m pip install -r requirements.txt；安装可信 ffprobe，设置 SENSE_CABINET_FFPROBE 的绝对路径。生产不安装/运行 Moto。
+3. 在独立主机或云服务建立私有 S3 兼容桶，启用有效 HTTPS。服务账号限制在专属前缀的 GetObject、PutObject；无公开访问/浏览器 CORS/匿名读取权限，不授予平台删除桶或修改桶策略权限。确认该服务支持条件 PutObject If-None-Match:*。保留版本/备份供运维恢复；不能用任意历史对象覆盖现有清单。
+4. 将配置放在受控路径，限制服务账号可读（0600），凭证通过独立文件注入，不提交到仓库。例如 /etc/sensing/cabinet-objects.json：
+{
+  "endpoint": "https://objects.example.internal:9000",
+  "region": "us-east-1",
+  "bucket": "cabinet-ciphertext",
+  "prefix": "production/chunks",
+  "ca_file": "/etc/sensing/object-ca.pem",
+  "access_key_file": "/run/secrets/cabinet-object-access",
+  "secret_key_file": "/run/secrets/cabinet-object-secret"
+}
+环境变量 SENSE_CABINET_OBJECT_CONFIG 指向配置。公有 CA 可省略 ca_file；禁止关闭证书验证。已有 SENSE_DATA_DIR、SENSE_CABINET_CHECKPOINT_CONFIG、生产 HTTPS/安全 cookie 配置保持有效。
+5. 依现有表状态按顺序执行缺失的离线迁移：
+python -m app.cabinet_admin migrate-templates
+python -m app.cabinet_admin migrate-attachments
+python -m app.cabinet_admin migrate-chunks
+不要重复执行已安装迁移。迁移会推进已有检查点；不接受不匹配旧快照。新安装先完成账号迁移/组织开户，参见账号与组织部署文档。
+6. 启动平台；发布具有相应视频 max_bytes 的模板新版。由所有者上传、暂停、续传、绑定；分别登录 A、B，显式授予 A preview、B stats。验证 B 无原始附件读取权限。
+7. 反向代理：每个上传请求限 2 MiB 足够容纳 1 MiB 分块；对旧完整附件接口如需继续使用，单独放宽至 8 MiB。关闭请求体落盘缓冲与响应缓存（proxy_request_buffering off、proxy_buffering off、proxy_cache off），转发 Cookie/Range/Content-Range，不直接映射对象桶。完成校验会扫描整个文件，配置足够的 proxy_read_timeout；当前扫描期间占用平台锁，其他请求可能返回 503。单节点原型未实现后台完成队列或分布式工作锁，不应声称支持大规模并发。
+
+恢复、清理与故障处理
+正常重启读取持久化上传清单，可继续上传；预览会话在原登录和期限内也能恢复。检查点或 S3 不可用则拒绝，不从旧清单继续提供服务。
+禁止只恢复 SQLite 旧快照、重置 namespace 或绕过检查点来修复故障。先保全证据，根据独立最新 head 恢复完全匹配的状态；不能匹配时保持锁定并走受审计恢复流程。
+取消上传或删除未绑定附件会从受保护状态撤掉引用；不会在数据库提交前物理删除对象，以避免双系统非原子故障破坏已提交清单。孤立密文目前需要离线受控回收，没有自动 GC：停平台、验证最新检查点、导出所有 attachment_chunks.object_key 与前缀组成保留集合，再由独立运维比对桶清单；只删除确认不被任何环境/备份恢复策略引用的孤立对象。不要对整个前缀设置按对象年龄过期，否则会删除仍在使用的密文。取消操作仅释放平台逻辑容量，不代表物理容量已回收。
+
+接口摘要
+POST /api/cabinet/templates/{tid}/{version}/attachments/uploads：field/mime/size，创建会话。
+GET /api/cabinet/uploads：当前所有者未完成会话。
+GET /api/cabinet/uploads/{id}：已有分块序号/大小/摘要，不暴露对象键与密钥。
+POST /api/cabinet/uploads/{id}/chunks/{index}：二进制分块，同源+CSRF。
+POST /api/cabinet/uploads/{id}/complete 或 /cancel。
+POST /api/cabinet/assets/{aid}/attachments/{mid}/stream（所有者）；或 grants/{gid}/attachments/{mid}/stream（使用者）。
+GET /api/cabinet/streams/{stream_id}：携带当前登录 cookie 和 Range。
+
+测试与边界
+测试命令：python -m pytest tests/test_cabinet_chunks.py tests/test_cabinet_attachments.py tests/test_cabinet_templates.py tests/test_cabinet_demo.py -q
+S3 测试采用独立 HTTPS Moto 协议模拟服务，检查点采用真实 HTTPS 服务；不是生产 S3 或真实 TEE 验收。覆盖新进程续传、幂等/替换拒绝、缺块/越界、跨主体、跨登录、撤销、到期、对象缺失/篡改、清单篡改、旧快照、跨块 Range 以及额度。
+浏览器隔离验收：设置 CABINET_QA_PASSWORD 为临时测试密码，PYTHONPATH=. python tests/cabinet_chunks_qa_server.py；另终端配置 Playwright NODE_PATH、CHROME_BIN 后运行 node tests/cabinet_chunks_browser_qa.cjs。测试需合成 PNG 和多分块 MP4（CABINET_QA_IMAGE、CABINET_QA_VIDEO）；模拟第二块网络中断、续传、实际播放/跳转、撤销和手机布局。该服务仅监听本机并使用临时数据目录，禁止部署正式环境。
+本实现解决授权状态和附件分块的完整性/防回滚闭环；平台进程仍能解密，不能据此宣称抵御平台宿主 root 内存窃取。真正硬件级隔离还需已有方案中的可信执行环境、远程证明及独立密钥释放策略。
+
+S3 条件写入及读取接口依据：
+https://docs.aws.amazon.com/boto3/latest/reference/services/s3/client/put_object.html
+https://docs.aws.amazon.com/boto3/latest/reference/services/s3/client/get_object.html
+
+合成浏览器媒体生成示例（仅测试用）：
+python -c "from PIL import Image; Image.new('RGB',(320,180),(20,100,200)).save('/tmp/cabinet-media.png')"
+ffmpeg -v error -f lavfi -i 'testsrc2=size=1280x720:rate=30' -t 9 -c:v libx264 -preset ultrafast -crf 16 -pix_fmt yuv420p -movflags +faststart -y /tmp/cabinet-chunks.mp4
+浏览器脚本使用 9 秒视频并跳转至 8.7 秒；约 12 MB，超过旧版 8 MiB 限制。
+
+本轮验收记录
+浏览器：12,026,760 字节（约 11.47 MiB）合成 MP4，模拟第二块断网后恢复，第一块没有重复上传；播放与跳至 8.7 秒通过，Range 返回 206；统计主体隔离、撤销后拒绝/清空、390 px 手机布局通过。截图在 outputs/数据安全柜技术路线/分块上传流式预览验收/。
+服务端回归包括旧附件、模板与账号权限；S3 测试使用 TLS 协议模拟服务，尚未连接用户正式对象桶。2 GiB 为实现配置上限，未进行 2 GiB 实测或生产吞吐验收。首次上线应使用目标 S3 服务另做容量、带宽、条件写入、断网及恢复验收。
+
+回归结果：累计 81 项 pytest 测试通过，6 项 OPA 依赖测试跳过；另有 20 个子测试通过。最终分块与账号组合回归 27 项通过，TLS 禁用配置拒绝测试 3 项通过。JavaScript 语法检查通过。

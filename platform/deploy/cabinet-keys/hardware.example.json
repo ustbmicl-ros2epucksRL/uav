@@ -1,0 +1,9 @@
+{
+  "namespace": "cabinet-tee",
+  "url": "https://kbs.example.internal:8443",
+  "ca_file": "/etc/cabinet/kbs-ca.pem",
+  "client": "/usr/local/libexec/kbs-client",
+  "client_sha256": "REPLACE_WITH_APPROVED_BINARY_SHA256",
+  "checkpoint_url": "https://checkpoint.example.internal:9443",
+  "checkpoint_ca_file": "/etc/cabinet/checkpoint-ca.pem"
+}

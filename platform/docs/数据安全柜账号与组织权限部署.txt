@@ -1,0 +1,84 @@
+数据安全柜独立账号与组织权限（2026-11-12）
+
+一、当前版本与边界
+现有 /data-cabinet（地面站 /network/data-cabinet）已改为独立用户名/密码登录，支持本地账号、组织、成员角色、停用、退出及修改密码。未接入外部统一身份源、SSO 或 MFA。数据处理仍为合成特征场景；独立检查点为必需配置，硬件防 root 验收尚未完成。
+所有 /api/cabinet-demo/* 旧接口返回 410，不再新建三角色会话、不返回主体令牌、不提供恢复所有角色的接口。新 API 为 /api/cabinet/*。不支持用新账号自动接管旧演示主体的资产。
+
+二、权限模型
+owner（数据所有者）：仅能入柜自己的场景资产、查看和管理自己的授权；不会因同属一个组织而获得其他所有者的数据。
+dataset（模型数据使用者，主体 A）：仅可执行明确授予自己的 dataset 授权，并读取自己的结果。
+stats（统计使用者，主体 B）：仅可执行明确授予自己的 stats 授权；不能请求 dataset，不能读取 A 的结果。
+org_admin（组织管理员）：只能列出本组织成员、创建普通成员、启用/停用、修改普通成员角色。不能新建或提升组织管理员，不能管理别的组织，不能自动读取本组织成员资产或结果。组织管理员账号由离线管理员创建。
+数据所有者输入目标用户名进行显式授权，允许授权给其他组织的已启用账号；这不赋予按组织浏览其他资产的权限。所有 API 由登录 cookie 确定主体，不接受请求体 role/subject 覆盖身份。结果 ID、授权 ID 不能替代主体校验。
+角色变更会使该用户所有登录会话失效，并永久撤销授予该用户或其名下资产发出的旧授权；改回原角色不会恢复旧授权。账号停用即拒绝访问，重新启用也不会恢复旧登录会话。组织停用/启用通过离线工具执行，两次操作都会使其成员旧会话失效。数据所有者或其组织停用时，接收方也不能继续执行/读取其资产。
+
+三、凭据与会话
+密码采用 scrypt（N=2^17,r=8,p=1，独立随机盐）；要求 12–128 个字符，无默认密码，不存储明文密码。对外响应、审计不包含密码或内部安全柜令牌，参数验证错误也去除输入值。
+内部主体令牌使用 AES-GCM 加密后保存在受保护数据库，密钥按用途派生；仅服务端解密使用，绝不返回浏览器。会话 cookie 是随机值，数据库只存其 SHA256 摘要；浏览器不使用 localStorage 保存身份令牌。
+登录成功生成新 cookie，替换当前浏览器原会话；其他独立设备的会话可继续存在。登录有效期 8 小时，由独立检查点时间校验；服务重启或刷新页面可恢复同一账号。退出持久撤销当前会话；改密/重置密码会使该用户全部会话失效。
+Cookie 为 HttpOnly、SameSite=Strict，默认 Secure；所有写请求要求自定义 X-Cabinet-Request 和登录后会话绑定的 X-CSRF-Token，检查 Origin/Sec-Fetch-Site。没有公开注册，也没有跨域 API 授权。
+连续 5 次登录失败锁定该用户名 5 分钟，全局每 60 秒允许最多 100 次登录尝试；计数在受保护数据库中，重启不会清空。部署入口仍应配置连接/请求体大小限制及源地址限速，以避免大量未知用户名或昂贵哈希导致资源耗尽。
+认证、组织、会话、登录限速记录和业务表共同纳入完整状态 HMAC/远端 CAS。恢复旧权限表、会话表、数据库快照或删除数据库不能触发权限重置。
+
+四、首次部署或从演示版本升级
+以下命令在 platform/ 目录执行，使用平台虚拟环境的 python；虚拟环境放在本机非 iCloud 路径。保持独立 HTTPS 检查点服务运行，停止平台所有 worker 后执行离线管理命令。平台和离线工具使用同一个 platform.lock。
+先按《数据安全柜独立检查点部署与验收》配置独立服务及凭据；首次创建 namespace 用 prepare_checkpoint.py。已有持久系统升级必须保留原 namespace、state.key、检查点数据库和 persistent.db，不能重新 provision 或回滚检查点。
+环境配置示例（按本机实际路径修改）：
+export SENSE_CABINET_CHECKPOINT_CONFIG=/etc/sensing/cabinet/platform.json
+export SENSE_DATA_DIR=/var/lib/sensing
+export SENSE_CABINET_ORIGIN=https://sensing.example.internal
+
+1. 显式安装账号表（仅执行一次）：
+python -m app.cabinet_admin migrate-auth
+该操作先校验当前完整状态，再在受保护事务中建立账号表并删除旧 platform_sessions。旧演示资产/授权/审计留在数据库中，但不自动映射给新用户；没有公开读取旧资产的接口。不能重复执行迁移，也不将不匹配快照重新签名。需要旧数据迁移时应另行进行所有权确认和受控迁移。
+
+2. 建立数据提供组织和合作组织（输出各自组织 ID）：
+python -m app.cabinet_admin add-org --name '数据提供组织'
+python -m app.cabinet_admin add-org --name '合作组织'
+
+3. 使用上一步实际组织 ID 创建独立账号；每条命令交互输入并确认密码，不把密码写入命令行或环境变量：
+python -m app.cabinet_admin add-user --org <提供组织ID> --username owner --role owner
+python -m app.cabinet_admin add-user --org <合作组织ID> --username alice --role dataset
+python -m app.cabinet_admin add-user --org <合作组织ID> --username bobby --role stats
+python -m app.cabinet_admin add-user --org <提供组织ID> --username orgadmin --role org_admin
+通过受控通道分别交付凭据，建议首次登录后改密。org_admin 可在页面创建本组织普通成员，不可跨组织创建。
+
+4. 启动平台：
+bash scripts/run.sh
+通过配置的 HTTPS 域名访问；反向代理保留 Host/Origin/Cookie，限制后端只对代理可达。SENSE_CABINET_ORIGIN 必须为浏览器可见的准确 origin（协议+域名+端口，不含 /network 路径）。禁止代理缓存 /api/cabinet/*，不记录请求体、Cookie、CSRF 或密码字段。不要为这些路径开放跨域携带凭据访问。
+本机环回 HTTP 验证才可设置 SENSE_CABINET_ALLOW_HTTP=1；生产不能设置。旧 SENSE_CABINET_SECURE_COOKIE 开关不再控制新登录 cookie。
+
+五、日常管理
+退出：只撤销当前登录。改密：页面展开修改密码，提交原密码和新密码，会退出该用户全部会话。
+忘记密码：停止平台服务，由可信管理员执行：
+python -m app.cabinet_admin reset-password --username alice
+停用/启用整个组织（均使旧会话失效）：
+python -m app.cabinet_admin set-org --org <组织ID> --enabled no
+python -m app.cabinet_admin set-org --org <组织ID> --enabled yes
+组织管理员页面可管理普通成员角色及启用状态。成员不能自己选择组织或提升角色。没有组织管理员的在线权限提升/账号删除接口。
+
+六、操作验收
+用三个独立浏览器配置文件/隐私上下文分别登录 owner、alice、bobby：
+1. owner 入柜，向 alice 授予 dataset、向 bobby 授予 stats。
+2. alice 执行并查看数据集；bobby 执行只得到统计。
+3. bobby 请求 alice 的结果 ID 或授权 ID，后端拒绝；第三个 owner 看不到原 owner 资产。
+4. owner 撤销 alice，再读旧结果被拒绝；bobby 不受影响。
+5. orgadmin 只见提供组织成员，不见合作组织成员，也不能读业务结果。
+6. 停用账号或修改角色，旧 cookie 失效；角色改回不能使旧授权复活。
+7. 服务重启，原账号 cookie 仍可恢复，额度/撤销仍保持；旧数据库快照和会话表篡改被拒绝。
+
+七、自动化验证
+从项目根目录：
+PYTHONPATH=platform:research/data_security_cabinet python -m pytest platform/tests/test_cabinet_demo.py research/data_security_cabinet -q
+测试用独立临时目录与真实本机 HTTPS，需要允许环回端口监听；不会使用正式账号数据。
+浏览器脚本：platform/tests/cabinet_browser_qa.cjs。它要求隔离测试环境中已有 owner/alice/bobby/admin 四个测试账号，密码通过 CABINET_QA_PASSWORD 提供；不要用正式账号运行此脚本，它会入柜、授权和撤销。
+CABINET_BASE_URL 支持含 /network 的挂载地址；CHROME_BIN 可指定 Chrome；需安装 Playwright。截图输出 /tmp/cabinet-account-*.png。
+本轮保留截图：outputs/数据安全柜技术路线/账号与组织权限验收/。
+
+八、持久化与安全边界
+继续沿用单机持久磁盘、文件锁、独立检查点及安全锁定机制；不支持多节点各自复制数据库写入。检查点自身与平台一起回滚不在保护范围。CAS 已推进但本地提交丢失仍需人工调查，不能接受旧快照自动恢复。
+组织管理员和离线管理者是明确的可信权限边界；真实登录并不等于硬件隔离。宿主 root 可读密钥或替换进程的问题仍须由 TEE、远程证明和独立密钥服务解决。
+参考依据：OWASP Password Storage Cheat Sheet https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html
+OWASP CSRF Prevention Cheat Sheet https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html
+
+本轮实际结果：账号/平台测试 13 passed；底层 23 passed、11 个子测试通过、6 项 OPA 测试因未配置依赖跳过。主平台路由、旧接口关闭、缺少配置拒绝启动账号服务检查通过。四个独立浏览器会话完成所有者/A/B/管理员闭环，越权结果请求返回 404，撤销后 A 读取被拒绝、B 正常，刷新恢复/退出清屏通过；390px 手机无页面横向溢出，未捕获浏览器脚本错误。截图已人工检查。正式服务及真实用户数据库未做自动迁移；测试仅使用临时账号、随机凭据和临时数据库。

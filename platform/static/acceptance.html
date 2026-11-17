@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="data:,"><title>感知网络测试与验证</title>
+<link rel="stylesheet" href="static/portal.css"><link rel="stylesheet" href="static/acceptance.css">
+</head>
+<body>
+<header><div><h1>感知网络测试与验证</h1><p>研究问题、联合规划、数值复核与示范证据</p></div><a href="./">三维工作台 ↗</a></header>
+<nav id="navigation" aria-label="平台功能"></nav>
+<main>
+<div class="context"><label>规划任务<select id="task-select"></select></label><p id="task-context"></p></div>
+<p id="status" role="status">正在加载任务…</p>
+<section class="card" id="empty" hidden><h2>建立可复现的规划任务</h2><p>三个基准任务分别使用建筑区、物流廊道和复杂电磁区当前场景。单场景算例新增建设预算为 50 万元，覆盖目标为 90% / 95%，定位理论界 30 米的合格比例目标为 80%。</p><button id="create-baselines">建立三场景基准任务</button><a href="tasks">自定义任务</a></section>
+<section class="card" id="configuration" hidden>
+<h2>联合规划与细网格复核</h2>
+<p>在当前资源库中搜索站址、型号、挂高与朝向。广域网格与重点区精细网格共同覆盖验算空域，按有效体素体积汇总全部结果。</p>
+<form id="assessment-form">
+<div class="grid">
+<label>广域网格 / m<select id="wide-cell"><option value="10">10</option><option value="20">20</option><option value="50">50</option></select></label>
+<label>重点区网格 / m<select id="focus-cell"><option value="2">2</option><option value="4">4</option><option value="10">10</option></select></label>
+<label>候选挂高 / m<input id="heights" value="125,170,230" required></label>
+<label>候选朝向 / °<input id="azimuths" value="0,45,90,135,180,225,270,315" required></label>
+<label>优化方法<select id="strategy"><option value="precision">精度优化 · 全站址与挂载</option><option value="legacy">原候选位联合规划</option></select></label>
+<label>优化重点<select id="objective"><option value="low">30–100 m 低空层</option><option value="whole">全域精度</option></select></label>
+<label>低空层合格比例目标 / %<input id="low-target" type="number" value="80" min="1" max="100" step="0.1"></label>
+<label class="check-setting"><input id="retune-existing" type="checkbox" checked>允许既有定向设备转向</label>
+<label>转向调试预留 / 万元<input id="retuning-reserve" type="number" value="2" min="0" step="0.1"></label>
+<label>对照方案<select id="reference"><option value="">仅与已有部署对比</option></select></label>
+<label>计算模式<select id="optimize"><option value="true">联合规划并复核</option><option value="false">仅验证已有部署</option><option value="reference">按当前模型复核所选方案</option></select></label>
+</div>
+<details><summary>型号与验算区域</summary><div id="models" class="check-list"></div><label>范围 x0,x1,y0,y1,z0,z1 / m<input id="bounds" value="0,2000,0,2000,30,300" required></label><p class="muted">缩小区域的结果按局部验算标识。型号参数与工程容量沿用资源配置，已登记实物资产保持其型号与姿态。</p></details>
+<div class="actions"><button id="submit">提交计算</button><a href="resources" id="resources-link">编辑资源</a><a href="tasks" id="task-link">编辑预算与约束</a></div>
+</form>
+</section>
+<section class="card"><div class="actions record-actions"><label>选择方案版本<select id="history"><option value="">尚无记录</option></select></label><button class="secondary" id="refresh">刷新</button><button class="secondary" id="cancel" hidden>取消计算</button><button class="secondary" id="retry" hidden>用相同输入重新计算</button></div><p id="job-status" role="status"></p><p id="job-context" class="muted"></p><details><summary>查看记录详情</summary><pre id="job-details" class="mono"></pre><p class="muted">重新计算使用本记录保存的输入和算法版本，生成一条新记录，历史结果继续保留。</p></details></section>
+<section class="card" id="scene-comparisons" hidden><h2>三场景测试与验证记录</h2><div id="scene-comparison-table"></div></section>
+<div id="result" hidden>
+<section class="card"><h2 id="conclusion"></h2><p id="scope"></p><p id="stale" class="warning" hidden>当前输入或算法已更新。此页保留历史结果，请重新提交计算后用于当前方案。</p><div id="metrics" class="grid"></div><div id="comparison"></div><p id="aggregation" class="muted"></p></section>
+<section class="card" id="precision-analysis" hidden><h2>定位瓶颈与优化对照</h2><div id="precision-comparison"></div><div id="precision-bottleneck"></div></section>
+<section class="card"><h2>问题、方法与本次结果</h2><div id="research-links" class="grid"></div></section>
+<section class="card"><h2>三维感知空间与部署对比</h2><div class="grid">
+<label>部署<select id="variant"><option value="after">规划后</option><option value="before">规划前</option></select></label>
+<label>指标<select id="field"><option value="3">探测概率 Pd</option><option value="4">信号质量 SINR</option><option value="5">定位理论界 CRLB</option></select></label>
+<label>点云高度层<select id="altitude-layer"><option value="all">全域 30–300 m</option><option value="low">低空 30–100 m</option></select></label>
+<label>视图<select id="view"><option value="3d">三维旋转</option><option value="2d">平面投影</option></select></label>
+</div><p id="legend" class="muted"></p><canvas id="coverage-map" aria-label="当前任务实际计算点云与设备部署"></canvas><p id="point-detail" aria-live="polite">点击采样点或设备查看数值与参数。</p><p class="muted">图层为分区抽样，统计使用全部网格。金色标记为新增或转向设备，金框为重点区。</p>
+</section>
+<section class="card"><h2>任务测试进展</h2><p>按本次计算、模型校验和现场证据检查任务完成情况。合成仿真与现场测试分别判定。</p><div id="validation-progress" class="grid"></div></section>
+<section class="card"><h2>任务指标与验证结果</h2><div id="indicators"></div></section>
+<section class="card"><h2>方案与示范证据</h2><div id="deployment"></div><div class="actions"><button id="publish">归档为可管理方案</button><a id="plan-link" hidden>查看方案</a><a id="demo-link" hidden>建立关联示范试验</a><a id="export">导出指标证据 JSON</a><a id="handoff">导出地面站交接包</a><a id="ground-station" href="/?view=legacy" hidden>进入地面站关联航迹</a></div><div id="evidence"></div></section>
+<details class="card"><summary>网格、搜索过程与可复现信息</summary><div id="reproducibility"></div></details>
+</div>
+</main>
+<footer>数据来源和模型假设随每次计算保存。现场成果依据关联试验、原始记录和验收证明核验。</footer>
+<script src="static/portal-map.js" defer></script><script src="static/acceptance.js" defer></script>
+</body></html>

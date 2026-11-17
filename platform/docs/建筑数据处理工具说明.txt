@@ -1,0 +1,78 @@
+雄安建筑数据：一键处理与卫星图核对
+
+入口
+  在 platform 目录运行：
+    bash scripts/buildings.sh --check-only
+  只检查现有建筑文件，生成报告，不重新下载、不修改图层。
+
+  完整处理：
+    bash scripts/buildings.sh --workers 4
+  自动使用 /tmp/gba-venv；不存在时创建环境并安装 requirements-geodata.txt。
+  依赖 Python 3、curl、Shapely。可用 SENSE_GEO_VENV 改变虚拟环境位置。
+  服务已运行时，处理成功后刷新页面即可；工具不会启动或重启飞行服务。
+
+五个步骤
+  1. 区域数据下载
+     prepare_gba_buildings.py 读取 GBA 官方 HuggingFace 发布文件。
+     当前固定瓦片为 e115_n40_e120_n35，轮廓与高度原始文件约 12.2 GB。
+     首次运行仍需传输整个瓦片，但采用 32 MiB 分段，不把整个瓦片长期存盘。
+     每段裁剪结果存入 /tmp/gba-xiongan-cache；连接失败会重试。
+     中断后执行同一命令续跑，不要删除缓存。不是使用展示用 WFS 接口。
+
+  2. 裁剪雄安展示范围
+     地面站：[115.975, 39.046, 116.008, 39.074]。
+     感知规划：[115.945, 38.996, 115.978, 39.024]。
+     顺序为西、南、东、北，经纬度单位为度，包含当前地图范围及周边余量。
+     将边界投影到 EPSG:3857，再与建筑 Polygon/MultiPolygon 求交；保留内院。
+     这不是整个雄安行政区，也不是任意全球区域下载器。
+
+  3. 转换坐标与关联高度
+     原始坐标按官方说明解释为 EPSG:3857，包括部分误写 CRS 标签的 ODbL 文件。
+     转换结果为 WGS84/EPSG:4326，GeoJSON 坐标顺序是经度、纬度。
+     用 source + id + region 关联高度文件，保留估计高度和方差来源。
+     height 是相对建筑地面的米数，不是海拔；浏览器仍使用局部参考平面。
+
+  4. 校验并本地加载
+     building_pipeline.py 检查要素数、编号唯一性、几何合法性、范围、
+     坐标系、高度数值、估计来源和缺失计数，输出 SHA256。
+     校验通过才原子替换 static/buildings.geojson；失败保留原图层。
+     本地浏览器由 real-buildings.js 读取文件，经 imagery-ground.js 的
+     localFrame 转换为与卫星图相同的东/北坐标，再按 height 拉伸体块。
+     不会把参考建筑自动加入后端覆盖/绕障计算。
+
+  5. 与卫星图核对（人工）
+     打开 http://127.0.0.1:8772/network/static/building-preview.html
+     下拉选择雄安地面站或感知规划范围，等待“卫星影像已就绪”。
+     勾选“仅看轮廓（核对底图）”，以俯视黄线检查：
+       - 道路两侧建筑是否落在正确街区，有无整体平移、旋转或尺度错误；
+       - 轮廓是否覆盖屋顶/建筑基底，内院是否保留；
+       - 是否存在旧村拆迁、新建楼宇等年代差异。
+     高楼屋顶在非严格正射影像里可能倾斜，不能仅凭屋顶边缘判定坐标偏移。
+     取消勾选看三维，点击建筑查看高度来源；不要通过平移数据伪装吻合。
+     工具报告固定将 visual_review 标为 requires_manual_review。
+     几何自动校验不等于影像匹配通过，也不等于测绘精度达标。
+
+输出
+  static/buildings.geojson：平台加载的本地建筑轮廓和高度。
+  outputs/building-validation.json：校验结果、范围、数量、SHA256、核对入口。
+  本次已核验 1,646 个要素、1,648 个多边形分量，1,646 个高度匹配、0 缺失。
+
+常用参数
+  bash scripts/buildings.sh --check-only
+  bash scripts/buildings.sh --workers 6 --cache /tmp/gba-xiongan-cache
+  bash scripts/buildings.sh --output /tmp/buildings.geojson --report /tmp/building-check.json
+  更改范围、源版本或解析规则时，必须使用新的 --cache 目录，避免复用旧裁剪。
+  当前源文件路径和大小在脚本中固定；上游改版导致 Range 校验失败时，应核实
+  官方文件目录并更新源配置，不能忽略失败并发布不完整数据。
+
+已知限制
+  GBA 主要影像基期为 2019，部分使用 2018。实图核对已发现雄安旧村轮廓
+  与底图新道路、施工区不一致，所以主平台默认二维，历史轮廓默认关闭。
+  预览默认展示北京国贸，可切回雄安。北京来自独立 OSM 数据，不改变雄安任务。
+  高度为模型估计；没有外墙贴图，不是照片级实景三维。
+  GBA 轮廓部分与高度为 CC BY-NC 4.0；ODbL 部分单独保留其许可。
+  来源、引用及现有北京数据转换方法见 ../README.txt。
+
+离线测试
+  /tmp/gba-venv/bin/python tests/test_prepare_gba_buildings.py
+  /tmp/gba-venv/bin/python tests/test_building_pipeline.py

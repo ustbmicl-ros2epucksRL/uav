@@ -1,0 +1,55 @@
+% 编译：xelatex fig-03-飞行业务时序.tex
+\documentclass[tikz,border=14pt]{standalone}
+\usepackage[fontset=none]{ctex}
+\setCJKmainfont{Songti SC}
+\setCJKsansfont{Heiti SC}
+\usetikzlibrary{arrows.meta}
+
+\definecolor{svc}{RGB}{29,106,79}
+\definecolor{svcfill}{RGB}{231,242,236}
+\definecolor{flt}{RGB}{138,75,8}
+\definecolor{fltfill}{RGB}{248,239,228}
+\definecolor{plan}{RGB}{31,78,121}
+\definecolor{planfill}{RGB}{232,238,245}
+\definecolor{muted}{RGB}{90,90,90}
+\definecolor{linec}{RGB}{180,176,168}
+
+\tikzset{
+  font=\small,
+  arr/.style={-{Latex[length=2.4mm]},line width=0.8pt},
+  box/.style={draw,rounded corners=2pt,align=center,inner sep=6pt},
+  note/.style={font=\footnotesize,text=muted,align=left}
+}
+
+\begin{document}
+\begin{tikzpicture}
+  \node[font=\large\bfseries,anchor=west] at (0,0.2) {一次飞行的业务时序};
+  \node[note,anchor=west] at (0,-0.35) {同一套平台内按这条链路办理。规划功能不出现在许可链上。};
+
+  \node[box,draw=linec,fill=white,minimum width=3.1cm,minimum height=0.8cm] (p) at (4.4,-1.4) {门户 / 飞手};
+  \node[box,draw=svc,fill=svcfill,text=svc,minimum width=3.4cm,minimum height=0.8cm] (s) at (8.6,-1.4) {业务功能};
+  \node[box,draw=flt,fill=fltfill,text=flt,minimum width=3.1cm,minimum height=0.8cm] (f) at (12.6,-1.4) {飞控功能};
+  \node[box,draw=plan,fill=planfill,text=plan,minimum width=3.1cm,minimum height=0.8cm] (g) at (16.6,-1.4) {规划功能};
+
+  \draw[linec,dashed] (p.south) -- ++(0,-8.6);
+  \draw[linec,dashed] (s.south) -- ++(0,-8.6);
+  \draw[linec,dashed] (f.south) -- ++(0,-8.6);
+  \draw[linec,dashed] (g.south) -- ++(0,-8.6);
+
+  \foreach \y/\txt in {2.3/1 提交飞行申请,3.3/2 批准或驳回,4.3/3 只读核对场景,5.3/4 下发航线并开始,6.3/5 回传遥测,7.3/6 完成或返航,8.3/7 回显任务结果} {
+    \node[anchor=east,font=\footnotesize] at (2.5,-\y) {\txt};
+  }
+  \draw[arr] (p.south |- 0,-2.3) -- (s.south |- 0,-2.3);
+  \draw[arr,svc] (s.south |- 0,-3.3) -- (p.south |- 0,-3.3);
+  \draw[arr,plan] (s.south |- 0,-4.3) -- (g.south |- 0,-4.3);
+  \draw[arr,svc] (s.south |- 0,-5.3) -- (f.south |- 0,-5.3);
+  \draw[arr,flt] (f.south |- 0,-6.3) -- (s.south |- 0,-6.3);
+  \draw[arr,flt] (f.south |- 0,-7.3) -- (s.south |- 0,-7.3);
+  \draw[arr,svc] (s.south |- 0,-8.3) -- (p.south |- 0,-8.3);
+
+  \node[note,anchor=west] at (0.2,-10.3) {申请：已提交，然后已批准或已驳回。已驳回不能生成任务。};
+  \node[note,anchor=west] at (0.2,-10.8) {任务：待下发，然后飞行中，然后已完成或已中止。};
+  \node[note,anchor=west] at (0.2,-11.3) {未解锁或未装订航线不能开始。围栏或低电量返航记为事件，任务记为已中止。};
+  \node[note,anchor=west] at (0.2,-11.8) {批准时预留机场、飞机、挂载和飞手；任务结束时释放。同一飞机不能有两条未结束任务。};
+\end{tikzpicture}
+\end{document}

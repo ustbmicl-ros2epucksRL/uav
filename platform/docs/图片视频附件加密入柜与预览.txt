@@ -1,0 +1,72 @@
+后续升级说明：新前端已接入分块上传、独立 S3 密文存储和 Range 预览。以下内容记录旧版有界 SQLite 附件路径；新部署及限制以《分块加密上传与独立对象存储部署.txt》为准。
+
+图片视频附件加密入柜、授权预览与撤销（2026-11-12）
+
+1. 本次支持范围
+已发布容器模板可声明图片字段 t=4（PNG、JPEG）和视频字段 t=5（MP4、WebM）。单个字段引用一个附件；嵌套容器和表格列也可包含附件字段。其他文件类型、SVG、HTML、任意 URL、本地文件路径和归档包均不支持。
+当前为有界附件原型：单附件最大 8 MiB，每资产最多 8 个不同附件；每所有者最多 16 个未绑定暂存附件，当前数据库附件原始字节总量限制 128 MiB。完整状态检查点涉及密文，因此不适用于大视频库或高吞吐文件存储。分块、断点续传、外部对象存储和视频 Range 流式预览尚未实现。
+
+2. 模板声明与审核
+字段示例：
+"photo": {"t":4,"r":true,"misc":{"mime":["image/png","image/jpeg"],"max_bytes":8388608}}
+"video": {"t":5,"r":false,"misc":{"mime":["video/mp4","video/webm"],"max_bytes":8388608}}
+字段必须列入相应 _ord 或 _head；mime 只能从对应类型白名单选择，max_bytes 可缩小但不能超过全局上限。附件字段若要允许预览，模板 purposes 必须明确包含 "preview"。
+record-summary-v1 可允许 stats/preview，只输出结构统计；numeric-table-v1 可同时允许 dataset/stats/preview，但数据集转换不输出附件引用或原始附件字节。
+网页新增“载入影像附件定义”，按原草稿→提交→独立管理员审核→发布流程操作。添加或修改附件字段、MIME、大小上限、预览用途必须注册新版本，不能改写已发布模板。
+
+3. 上传、加密暂存与原子绑定
+应用接收有界原始二进制请求，不使用 multipart 临时文件。不接受文件名作为路径，不抓取 URL。上传者必须是已登录 owner，拥有当前组织的已发布模板，并指定该版本实际存在的附件字段。
+应用核对声明 MIME、文件魔数及实际格式：图片通过 Pillow 验证并解码，限制单帧、总像素不超过 1600 万；视频使用可信 ffprobe 通过 stdin 检查容器与流，只放行 pipe 协议，不开放网络/文件协议。MP4 允许 H264/AAC；WebM 允许 VP8/VP9/Opus/Vorbis。最多 4 个流、最多 2 个视频流，视频尺寸不超过 4096×2160。视频检查不等于逐帧完整解码或恶意软件扫描。
+验证成功后用现有 AES-GCM 信封加密，密文和受保护元数据写入 cabinet_attachments。原始内容不进入静态目录，也不生成下载链接。AAD 绑定附件 ID、上传者、模板 ID/版本/摘要、字段路径、MIME、大小、内容摘要。
+暂存有效期为独立检查点时间起 24 小时，未绑定附件不能预览。上传返回 attachment_id；容器内容中填写 {"attachment_id":"返回的ID"}。提交资产时核对所有者、模板版本、字段、类型、有效期和未绑定状态，并在同一受保护事务内绑定所有附件和资产。
+不能引用别的账号附件、不同版本/字段附件、已过期附件或已绑定另一资产的附件；一个资产也不能重复引用同一附件。任一附件失败，整个资产入柜与已进行的绑定一起回滚。暂存成功不等于资产已入柜。
+暂存列表只对上传者可见，未绑定附件可在页面删除。过期暂存不会自动删除，需由所有者清理。已绑定附件不提供独立删除或替换 API，避免破坏原资产版本。容量耗尽后需要另行制定归档/保留策略，不能删除表或回退检查点腾空间。
+
+4. 独立预览授权
+新增 preview 授权用途，与 dataset、stats 分离。dataset 角色账号（主体 A）具备被授予 preview 的资格，但必须由所有者对具体资产显式授予；dataset 授权本身不能预览。stats 角色（主体 B）不能获得 preview。
+同一主体可对同一资产分别拥有 dataset 和 preview 授权；每一种用途仍禁止重复授予，不能靠重授相同用途重置额度或撤销。每条授权默认 30 分钟、5 次额度。每次成功交付一张图片或一段视频消耗一次 preview 额度；列出附件不消耗额度。preview 不能调用普通模型任务接口。
+所有者可以预览自己的已绑定附件，但也必须遵守模板已发布且允许 preview 的条件；组织管理员不自动获得成员附件权限。
+每次列出/预览都重新校验登录、账号/组织启用状态、主体、资产归属、授权用途、撤销/到期（交付时另校验额度）、模板状态和独立检查点。附件 ID 必须实际绑定该授权资产，不能以猜中 ID 或直接访问路径绕过校验。
+
+5. 预览交付与撤销语义
+预览通过带 CSRF 的认证 POST 返回受限 MIME 字节；GET 预览地址不提供内容，不使用公共/签名下载 URL。响应 no-store、nosniff、固定安全文件名、同源资源策略，不发送 ETag/304。Range 请求在鉴权后拒绝（416），当前不提供可被浏览器反复复用的流式链接。
+前端以内存 Blob 显示 img/video；切换资产/授权、刷新、退出、页面离开会清理播放节点并 revokeObjectURL。播放时每 5 秒复核授权，发现撤销、停用、到期或检查点异常会清空预览。此轮询是界面辅助，真正访问控制在每次服务器请求中。
+撤销会立即拒绝之后的服务器读取；不能收回已经授权交付的字节，也不能保证用户未保存图片/视频。正在交付的响应不能中途追回。浏览器缓存控制与 Blob 清理不是 DRM。原始预览可能包含 EXIF、音轨等原始信息，不是自动脱敏缩略图；审批 preview 应按原始内容访问授权处理。
+撤销 A 的 preview 不撤销其独立 dataset，也不影响 B 的 stats；停用模板则阻断所有受该模板约束的后续任务、结果与附件预览。
+
+6. 审计与防回滚
+附件上传、绑定、预览、暂存删除有独立审计事件；预览事件记录资产、附件、主体和授权，不记录内容或密码。认证后的越权、类型/大小拒绝也记录 API 拒绝事件。
+密文、暂存状态、资产绑定、版本摘要、额度及审计位于同一个受独立检查点约束的数据库。改密文、改绑定、恢复撤销前快照、复活旧模板/授权均拒绝。服务重启不会重置预览额度；检查点不可用则拒绝读取，不回退到公开附件目录。
+附件密文与资产的关联由受保护绑定表和容器内引用共同约束；AAD 绑定上传阶段的不可变身份，资产绑定由后续受保护事务完成。
+本功能仍不等于宿主 root 隔离：本地密钥、解密进程、Pillow/ffprobe 均需纳入未来 TEE/独立密钥服务边界。
+
+7. 升级部署
+保持现有 namespace、state.key、persistent.db 和独立检查点，不要重建或回滚。先完成账号和模板注册表迁移。停止全部平台 worker 后，从 platform/ 目录用既有虚拟环境执行：
+python -m pip install -r requirements.txt
+export SENSE_CABINET_CHECKPOINT_CONFIG=/etc/sensing/cabinet/platform.json
+export SENSE_DATA_DIR=/var/lib/sensing
+python -m app.cabinet_admin migrate-attachments
+迁移只创建附件表并提交受保护状态，不修改旧资产或旧授权；重复迁移拒绝。再启动平台。
+图片依赖 Pillow，本次测试版本为 13.0.0。视频需安装维护中的 FFmpeg 工具包并指定可信二进制：
+export SENSE_CABINET_FFPROBE=/usr/bin/ffprobe
+具体路径以部署主机为准。缺少 Pillow/ffprobe 时相应上传失败，不跳过校验。不要把用户提供路径作为探测程序。
+生产保持 HTTPS、准确 SENSE_CABINET_ORIGIN，不能设置 SENSE_CABINET_ALLOW_HTTP=1。代理禁止缓存附件 API，禁止记录 Cookie、CSRF、请求体和媒体字节；关闭请求/响应落盘缓冲并限制请求大小、并发及来源速率。应用本身不写明文上传临时文件，但代理、系统交换分区、崩溃转储和诊断工具也必须纳入部署管理。
+建议解析服务低权限运行并限制资源与外联，及时维护媒体解码依赖；本实现没有恶意软件扫描或完整 CDR。大文件生产部署应另做分块密文对象存储、受保护清单、隔离解码和存储生命周期方案，不能简单提高当前限额。
+
+8. 网页操作
+所有者载入影像附件定义，注册并提交；独立组织管理员审核发布。
+所有者在“按已发布模板录入数据”选择版本和附件字段，上传图片/视频。普通容器字段自动填入 attachment_id；表格行字段需按暂存列表 ID 手动填写到对应行。然后点击“绑定此版本并加密入柜”。
+选择新资产，给 A 授予“附件预览（独立授权）”，给 B 授予统计。
+A 登录后选择 preview 授权，点击“列出当前资产／授权附件”，再点“授权预览”。B 只可执行统计，不显示附件预览控件，直接请求也会被拒绝。
+所有者撤销 A 的 preview，A 后续读取被拒绝，页面定期检查后清空已有展示。所有者可从自己的资产选择框列出并预览附件。
+
+9. 测试
+项目根目录：
+PYTHONPATH=platform:research/data_security_cabinet python -m pytest platform/tests/test_cabinet_demo.py platform/tests/test_cabinet_templates.py platform/tests/test_cabinet_attachments.py research/data_security_cabinet -q
+需允许本机 HTTPS；真实 MP4 测试用 ffmpeg 生成合成片段，ffprobe 验证。如果没有 ffmpeg，视频素材测试会跳过，不可把跳过结果作为视频验收。
+测试覆盖图片和实际 MP4、MIME 欺骗/不支持格式/超限、不同所有者和模板版本引用拒绝、暂存过期、重复引用/已绑定重用拒绝、原子绑定回滚、预览与数据集权限分离、统计账号隔离、Range/跨站拒绝、撤销与停用、密文/绑定/授权/快照篡改、跨进程额度保持、检查点断连。
+浏览器脚本 platform/tests/cabinet_media_browser_qa.cjs 使用隔离测试账号及 CABINET_QA_IMAGE / CABINET_QA_VIDEO 合成素材。它会注册、发布、上传、入柜、授权、撤销，请勿针对正式资产执行。CABINET_QA_PASSWORD 为临时账号密码，CABINET_BASE_URL 指测试地址。
+
+参考：OWASP File Upload Cheat Sheet（https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html）；MDN Cache-Control 与 URL.revokeObjectURL（https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Cache-Control，https://developer.mozilla.org/en-US/docs/Web/API/URL/revokeObjectURL_static）。
+
+本次实际验证结果：完整回归第一轮 63 passed、6 skipped、20 个子测试通过；补充暂存过期/原子绑定失败和所有者停用场景后，附件专项最终 13 passed。分批累计 65 项通过，6 项 OPA 因缺少依赖跳过；真实 MP4 测试实际运行，未跳过。浏览器完成图片/视频上传与预览、统计账号隔离、撤销后服务端拒绝和轮询清空；另确认视频帧已解码且播放时间实际推进。390px 手机无页面横向溢出，截图已检查，保存于 outputs/数据安全柜技术路线/附件上传预览验收/。主平台路由及 JavaScript 语法检查通过。本轮正式数据库未迁移，测试全部使用临时账号、合成媒体和临时数据库。

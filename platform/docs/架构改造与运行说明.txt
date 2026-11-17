@@ -1,0 +1,96 @@
+架构改造与运行说明（2026-10-26）
+
+本次实现
+  保留 FastAPI、原生 JavaScript、Canvas / Three.js 和 SQLite。
+  main.py 负责应用组合与生命周期；core_api.py、engineering_api.py、tiles_api.py
+  分别管理核心业务、工程工作台及地图接口；scene_service.py 统一场景读取。
+  工作台使用 api-client.js 统一 HTTP 错误处理、请求编号和计算状态轮询。
+  原同步接口保留，现有其他页面继续兼容。
+
+后台计算
+  工作台的三维效能场、预算内方案比较已转为持久化队列。
+  每个数据目录通过文件锁选出一个调度器，最多同时运行一个计算子进程。
+  同一主机的独立规划服务和地面站挂载服务可以共享数据库。
+  队列最多接受 20 个排队/运行任务；默认计算超时 600 秒。
+  SENSE_JOB_TIMEOUT 可调整超时秒数。
+  支持 queued / running / succeeded / failed / cancelled / interrupted。
+  页面展示真实阶段状态，不虚构数值百分比。
+  取消和超时会终止对应计算子进程。服务正常退出会终止正在运行的计算。
+  突然退出后子进程检测父进程离开并退出；新调度器将遗留 running 标为 interrupted。
+  queued 自动继续；失败、中断和取消的任务需用户点击重跑，避免重复耗费算力。
+
+实验记录
+  每项任务保存完整场景、校正、规范化参数、模型版本、计算源码 SHA256、
+  Python / NumPy / SciPy / Pydantic 版本和输出；重跑生成新记录并关联 parent_id。
+  当前两种计算使用确定性数值模型；场景生成种子在场景快照中保存。
+  计算本身不使用随机采样，random_seed=null；任务 ID 与时间戳会变化。
+  不提供旧算法环境自动还原；版本不一致会拒绝重跑或载入，需在原环境复现。
+  完成后仅保存历史结果，不自动更改设备。
+  “载入工作台”在事务内核对完整场景和校正快照，避免过期结果覆盖当前配置。
+  工作台计算成功后自动执行此核对并载入结果；设备方案仍需单独点击应用。
+
+页面与接口
+  独立服务：/workbench、/computations。
+  地面站挂载：/network/workbench、/network/computations。
+  POST /api/scenes/{scene}/jobs  {"kind":"volume|plan","parameters":{...}}
+  GET  /api/jobs?scene=urban&limit=20&offset=0
+  GET  /api/jobs/{id}
+  GET  /api/jobs/{id}/export
+  POST /api/jobs/{id}/cancel
+  POST /api/jobs/{id}/retry
+  POST /api/jobs/{id}/publish
+  挂载时以上 API 加 /network 前缀。
+  所有规划响应带 X-Request-ID；结构化日志记录请求方法、路径、状态、耗时。
+  /health 检查数据库连接，保留 service / os 字段。
+
+启动（在 platform 目录）
+  bash scripts/run.sh
+  SENSE_SERVICE=flight bash scripts/run.sh
+  SENSE_PYTHON=/绝对路径/venv/bin/python SENSE_PORT=8768 bash scripts/run.sh
+  启动优先选择 ~/Library/Caches/sensing-venv/bin/python，再回退 .venv。
+  所选 Python 需安装 requirements.txt；运行测试另安装 requirements-dev.txt。
+  Python 字节码查找移到临时目录，避免读取 iCloud 中仅云端的旧 __pycache__。
+  启动前限时 20 秒检查依赖及应用导入；失败时明确报告，不无限等待。
+  源码本身也可能变成仅云端文件，正式运行仍应将整个 platform 复制到本机目录。
+  SENSE_HOST 默认 127.0.0.1。当前仍是本机实验平台，尚未增加多用户鉴权。
+
+数据库、备份和迁移
+  默认仍读取 platform/data/platform.sqlite3，避免自动切换造成已有数据失联。
+  SENSE_DATA_DIR 指定数据库和瓦片缓存目录；所有规划/挂载服务必须保持一致。
+  schema_migrations 记录结构版本，初始化保留原表并幂等增加任务表及索引。
+  在线备份使用 SQLite backup API，包含已提交 WAL 数据并校验完整性。
+  备份目的文件必须不存在，禁止覆盖已有文件。
+
+  python scripts/data_admin.py backup /本机备份目录/日期.sqlite3
+  python scripts/data_admin.py verify /本机备份目录/日期.sqlite3
+
+  迁移前先停止所有写入该数据库的服务，然后执行：
+  python scripts/data_admin.py migrate "$HOME/Library/Application Support/SensingPlanning"
+  export SENSE_DATA_DIR="$HOME/Library/Application Support/SensingPlanning"
+  bash scripts/run.sh
+
+  迁移保留原数据库。瓦片缓存无需复制，会按需重建。
+  回滚：停止服务，恢复旧 SENSE_DATA_DIR 后启动；新目录后续产生的数据不会自动合并。
+  恢复备份：停止服务，将备份放入一个新的数据目录并命名 platform.sqlite3，
+  完整性校验后将 SENSE_DATA_DIR 指向该目录；不要覆盖正在使用的数据库。
+  本次验证使用隔离临时数据，未自动迁移或替换原有业务数据库。
+
+容器
+  docker compose -f ubuntu/docker-compose.yml config --quiet
+  docker compose -f ubuntu/docker-compose.yml up --build
+  planning-data 持久化规划库，flight-data 持久化地面站地图配置。
+  飞控镜像构建上下文已改为 platform，包含挂载所需的规划代码、静态资源和依赖。
+  地面站显式进入规划子应用生命周期，确保初始化、调度启动与退出清理执行。
+  同机共享卷采用本地文件锁；此实现不适用于跨主机共享文件系统或分布式调度。
+
+本轮范围与后续演进
+  后台队列当前覆盖工程工作台两项重计算，五页规划流程和研究算例原接口仍保留。
+  未迁移 PostgreSQL、Redis、Vue/React，也未引入多用户账号或现场设备权限系统。
+  这些需要结合并发、部署和设备要求另做实施；当前按单机科研平台边界运行。
+  未对生产数据迁移、真实飞行器指令链路或 Docker 全量镜像启动作验收声明。
+
+验证结果
+  平台后端 94 项、地面站 21 项、前端逻辑 19 项测试通过。
+  Chrome 实测效能场、方案比较、记录查询、重跑和载入通过。
+  详细记录与截图：../../outputs/architecture-acceptance/。
+  HTML / JS / CSS 增加缓存重新校验，避免改造后浏览器继续使用旧脚本。

@@ -1,0 +1,8 @@
+{
+  "repositories": [
+    {"name":"DeepSeek-V3.2-Exp","url":"https://github.com/deepseek-ai/DeepSeek-V3.2-Exp","commit":"87e509a2e5a100d221c97df52c6e8be7835f0057","purpose":"官方模型架构与推理参考代码；实验版，不是 R1 32B 的运行实现","license":"MIT，保留仓库 LICENSE"},
+    {"name":"DeepSeek-R1","url":"https://github.com/deepseek-ai/DeepSeek-R1","commit":"0cf78561f1d51c84a21b2190626b21116d5c68bb","purpose":"R1 官方发布说明、模型入口和许可证；不等同于完整预训练源码与数据","license":"参见仓库 LICENSE 及蒸馏基座许可说明"}
+  ],
+  "runtime":{"provider":"已有本机 Ollama","model":"deepseek-r1:32b","id_prefix":"edba8017331d","architecture":"qwen2","parameters":"32.8B","quantization":"Q4_K_M","weights_downloaded_this_task":false},
+  "note":"官方代码下载与模型权重部署是两个步骤。现有 32B 权重由 Ollama 运行，不执行 V3.2-Exp 的 671B 推理代码。"
+}

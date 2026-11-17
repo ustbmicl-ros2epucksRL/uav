@@ -1,0 +1,15 @@
+const test=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');const vm=require('node:vm');
+function setup(){
+ const requests=[],elements={},commands=[{dataset:{sitlCommand:'arm'}}];let rendered=0,cleared=0;
+ const $=id=>elements[id]??=( {style:{},value:'0',hidden:false,textContent:'',getContext:()=>({clearRect(){cleared++},fillText(){}}),scrollIntoView(){}} );
+ const status={connected:true,running:true,telemetry:{armed:false,roll:0,pitch:0,yaw:0,altitude:0,speed:0,latitude:39.05,longitude:115.98,battery:90},updated_at:{},anchor:{latitude:39.05,longitude:115.98}};
+ const marker=()=>({bindTooltip(){return this},addTo(){return this},setLatLng(){return this}});
+ const context=vm.createContext({$,window:{},document:{querySelectorAll:()=>commands},setInterval(){},setTimeout,clearTimeout,AbortController,Date,Math,Number,Error,encodeURIComponent,crypto:{randomUUID:()=> 'ui-command'},state:{scene3d:false},map:{removeLayer(){},fitBounds(){},setView(){}},L:{circleMarker:marker},horizon(){rendered++},switchView(){},fetch:async(url,options)=>{requests.push({url,options});return {ok:true,json:async()=>url.endsWith('/commands')?{command_id:'ui-command',status:'acknowledged',mav_result:0}:status};}});
+ vm.runInContext(fs.readFileSync(__dirname+'/../app/static/sitl.js','utf8'),context);
+ return {context,requests,elements,commands,status,rendered:()=>rendered,cleared:()=>cleared};
+}
+test('SITL controls use the dedicated endpoint and preserve ACK result',async()=>{const s=setup();await s.commands[0].onclick();assert(s.requests.some(r=>r.url==='/api/sitl/commands'));assert(!s.requests.some(r=>r.url.includes('/api/devices/')));assert.match(s.elements['sitl-receipt'].textContent,/acknowledged/);});
+test('historical SITL replay never issues a control command',async()=>{const s=setup();vm.runInContext('sitlReplayData=[{}]',s.context);await s.commands[0].onclick();assert(!s.requests.some(r=>r.url.endsWith('/commands')));assert.match(s.elements['sitl-receipt'].textContent,/退出/);});
+test('stale telemetry clears instrument rather than rendering old attitude',async()=>{const s=setup();await vm.runInContext('refreshSitl()',s.context);assert.equal(s.rendered(),0);assert(s.cleared()>0);assert.match(s.elements['sitl-values'].textContent,/过期/);});
+test('twin replay locks SITL controls and prevents command submission',async()=>{const s=setup();s.context.window.twinReplayActive=true;await s.commands[0].onclick();assert(!s.requests.some(r=>r.url.endsWith('/commands')));assert.match(s.elements['sitl-receipt'].textContent,/返回实时/);assert(s.commands[0].disabled);});
+test('task-focused control cannot command another SITL task',async()=>{const s=setup();s.context.window.twinTaskContext='TASK-1';s.status.execution_binding={task_id:'TASK-2'};await vm.runInContext('refreshSitl()',s.context);await s.commands[0].onclick();assert(!s.requests.some(r=>r.url.endsWith('/commands')));assert.match(s.elements['sitl-receipt'].textContent,/禁止操作其他任务/);assert(s.commands[0].disabled);});

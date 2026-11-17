@@ -1,0 +1,81 @@
+% 编译：xelatex fig-01-总体架构.tex
+\documentclass[tikz,border=14pt]{standalone}
+\usepackage[fontset=none]{ctex}
+\setCJKmainfont{Songti SC}
+\setCJKsansfont{Heiti SC}
+\usetikzlibrary{arrows.meta,calc,fit,backgrounds}
+
+\definecolor{svc}{RGB}{29,106,79}
+\definecolor{svcfill}{RGB}{231,242,236}
+\definecolor{flt}{RGB}{138,75,8}
+\definecolor{fltfill}{RGB}{248,239,228}
+\definecolor{plan}{RGB}{31,78,121}
+\definecolor{planfill}{RGB}{232,238,245}
+\definecolor{muted}{RGB}{90,90,90}
+\definecolor{linec}{RGB}{180,176,168}
+
+\tikzset{
+  font=\small,
+  arr/.style={-{Latex[length=2.4mm]},line width=0.8pt},
+  box/.style={draw,rounded corners=2pt,align=center,inner sep=6pt},
+  user/.style={box,draw=linec,fill=white,minimum height=0.85cm,text width=3.2cm},
+  card/.style={box,align=left,inner sep=8pt},
+  note/.style={font=\footnotesize,text=muted,align=left}
+}
+
+\begin{document}
+\begin{tikzpicture}
+  \node[font=\large\bfseries,anchor=west] at (0,0.35) {平台总体架构};
+  \node[note,anchor=west,text width=16.6cm] at (0,-0.22)
+    {对外是一套平台，功能做全。业务办理、飞机执行和感知规划都从同一入口进入，按职责分成平台内的三个功能。};
+
+  \node[user] (u1) at (2.0,-1.45) {门户用户};
+  \node[user] (u2) at (6.0,-1.45) {值班员};
+  \node[user] (u3) at (10.6,-1.45) {飞手};
+  \node[user] (u4) at (14.6,-1.45) {规划人员};
+
+  \node[font=\bfseries,anchor=west] (title) at (0.35,-2.35) {低空全域感知网络平台};
+  \node[note,anchor=east] (deploy) at (16.15,-2.35) {Ubuntu 服务器，同一入口};
+
+  \node[card,draw=svc,fill=svcfill,text width=6.3cm,anchor=north west] (svc) at (0.3,-2.85) {%
+    {\bfseries\color{svc} 业务功能}\\[2pt]
+    {\footnotesize\color{svc} 办理飞行业务，不单独再做一套平台。}\\[5pt]
+    飞行申请与审批\\
+    任务调度与绩效\\
+    机场、飞机、挂载、飞手同一本台账\\
+    批准预留，下发占用，结束释放\\
+    事件与任务数据共享\\[4pt]
+    {\footnotesize 门户、城市云脑、移动终端是三种视图。}\\
+    {\footnotesize 直播与 AI 识别只保留接口。}%
+  };
+  \node[card,draw=flt,fill=fltfill,text width=6.3cm,anchor=north west] (flt) at (9.85,-2.85) {%
+    {\bfseries\color{flt} 飞控功能}\\[2pt]
+    {\footnotesize\color{flt} 执行已批准航线并回传遥测，不单独审批。}\\[5pt]
+    地面站控制飞机\\
+    姿态、吊舱视野、轨迹记录\\
+    解锁 / 开始 / 返航 / 降落\\
+    围栏、低电量与完成回执\\[4pt]
+    {\footnotesize 服务器侧任务控制，不替代机载飞控固件。}\\
+    {\footnotesize 后续可接 MAVLink。}%
+  };
+
+  \draw[arr,svc] ($(svc.east)+(0,0.55)$) -- node[above,font=\footnotesize,text=svc] {下发航线} ($(flt.west)+(0,0.55)$);
+  \draw[arr,flt] ($(flt.west)+(0,-0.35)$) -- node[below,font=\footnotesize,text=flt] {回传遥测} ($(svc.east)+(0,-0.35)$);
+
+  \node[card,draw=plan,fill=planfill,text width=15.9cm,anchor=north west] (plan) at (0.35,-8.55) {%
+    {\bfseries\color{plan} 规划功能}\\[2pt]
+    {\footnotesize\color{plan} 申报书子项目四。回答站址、设备组合和挂载。规划结果供业务核对，不自动变成飞行许可，也不直接操控飞机。}\\[4pt]
+    三维覆盖 \quad 干扰与协同精度 \quad 按需规划 \quad 方案可视化\\[3pt]
+    {\footnotesize 业务功能只读取场景与覆盖约束。}%
+  };
+  \draw[arr,plan] ($(plan.north west)+(2.2,0)$) -- node[right,font=\footnotesize,text=plan] {读取} ($(svc.south west)+(2.2,0)$);
+
+  \begin{scope}[on background layer]
+    \node[draw=linec,line width=1pt,rounded corners=3pt,fit={(title)(deploy)(svc)(flt)(plan)},inner sep=10pt] (shell) {};
+  \end{scope}
+  \draw[linec] (u1.south) -- (u1.south |- shell.north);
+  \draw[linec] (u2.south) -- (u2.south |- shell.north);
+  \draw[linec] (u3.south) -- (u3.south |- shell.north);
+  \draw[linec] (u4.south) -- (u4.south |- shell.north);
+\end{tikzpicture}
+\end{document}

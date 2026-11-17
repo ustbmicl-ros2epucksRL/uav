@@ -1,0 +1,90 @@
+真实对象存储、配置检查和迁移（2026-11-13）
+
+本轮替换范围
+应用 S3 客户端继续使用 boto3，新增可独立运行的 SeaweedFS 4.52 服务部署器，不在生产路径启动 Moto。固定版本原生二进制、独立进程、真实磁盘数据与 HTTPS S3 协议用于验收；单节点不是多节点高可用系统。
+浏览器分块上传和预览接口不变：数据先在平台内 AES-GCM 加密，独立服务只保存密文；授权、主体、模板版本、分块清单和审计仍受独立检查点保护。存储服务恢复不能恢复已撤销的授权。
+
+一键部署
+前置：平台 requirements.txt 对应 Python 环境；Docker Compose 模式需已启动 Docker。独立服务主机准备专用数据磁盘、稳定 DNS、防火墙，默认 S3 9443。
+在 platform 目录执行：
+python scripts/cabinet_object_service.py up --directory /srv/cabinet-objects --host objects.example.internal --port 9443 --mode compose
+若需离线使用已验证二进制，追加 --weed /opt/seaweedfs/weed。
+
+部署器生成：
+- data/：真正的对象数据和元数据，必须整目录持久化、备份，禁止只备份 volume 数据文件而遗漏 filer/master。
+- server/：TLS 私钥/证书和静态 IAM 配置，只交给对象服务。
+- admin/：对象管理员凭据和 CA 签发密钥，仅独立运维保存。
+- client/：平台专属账号、CA 和 objects.json，仅允许专属桶 chunks/* 前缀的 GetObject/PutObject，不允许 DeleteObject、管理桶或匿名读取。
+- compose.json：重启策略 unless-stopped，只发布 HTTPS 端口，数据目录 bind mount。
+- cabinet-objects.service：原生 Linux systemd 单元模板。使用专用服务账号运行部署器后，由管理员安装到 /etc/systemd/system，daemon-reload 并 enable --now。不要同时用部署器后台进程和 systemd 启动同一数据目录。原生进程启动命令可通过生成的 ExecStart 查看。
+
+本机无 Docker 时：
+python scripts/cabinet_object_service.py up --directory /tmp/cabinet-objects --port 19443 --mode native
+原生模式仅绑定回环地址，不对外发布内部存储接口。原生后台进程可跨平台应用重启保留，但不能替代 systemd 的开机恢复；正式服务优先使用 Compose 或正确安装的 systemd 单元。
+
+重复 up 复用 deployment.json、凭据、证书和数据，不重建桶或轮换密钥。restart/stop/check 使用相同 --directory 和 --mode：
+python scripts/cabinet_object_service.py restart --directory /srv/cabinet-objects --mode compose
+python scripts/cabinet_object_service.py check --directory /srv/cabinet-objects --mode compose
+停止使用 stop，不运行 docker compose down -v，不删除 data/。
+生成证书使用专用 CA，服务证书有效期 30 天，正式上线应替换为运维签发、SAN 与域名一致的证书并建立到期前续期流程；续期只替换 server/tls.pem、tls.key（必要时同步平台 CA），保留 IAM、数据和检查点，再重启服务。示例 CA 不是公网可信 CA。
+
+二进制下载从官方固定版本 HTTPS 发布地址获取；验证官方 MD5 传输校验并记录 SHA-256。MD5 不构成供应链签名验证。生产应由组织审查并固化二进制 SHA-256 / 容器镜像 digest，部署时使用 --weed 或替换 compose.json 的固定镜像。原生集成测试实际使用版本 4.52、提交 984eac6a790be89e2a11de175a7413e1e3e32dd3。容器配置与原生服务使用同版本；本机 Docker 未启动，容器启动不属于已完成的实测项目。
+
+平台接入与检查
+跨主机仅复制 client/ 四个文件到平台，如 /etc/sensing/cabinet-objects/；修正 objects.json 内 ca_file、access_key_file、secret_key_file 为平台绝对路径。秘密文件权限 0600，目录 0700。不要将管理员凭据交给应用。
+export SENSE_CABINET_OBJECT_CONFIG=/etc/sensing/cabinet-objects/objects.json
+python -m app.cabinet_admin check-objects
+python -m app.cabinet_admin check-objects --probe
+第一条校验 HTTPS URL、桶名/前缀、证书路径及凭据文件权限；第二条真实写读一个随机探测对象，验证同键条件写返回 412、原内容不变、匿名读取拒绝、平台删除权限拒绝。任何检查失败都不表示可以上线，不关闭 TLS、不扩大权限来绕过失败。
+探测仅在专属前缀中保留 128 字节随机对象，输出 probe_key 供独立运维清理；平台没有删除权限。不会拿业务对象做破坏性探测。新配置需再次 probe，不能只依赖服务进程存在。
+
+迁移：保留现有资产/授权，不重建检查点
+先停止平台写入并保留平台数据库、原对象存储与独立检查点最新状态的受控备份；设置原 SENSE_DATA_DIR 与 SENSE_CABINET_CHECKPOINT_CONFIG。命令持有跨进程 platform.lock，防止并发修改。不要恢复旧快照或创建新 namespace 来使迁移“通过”。
+若尚未安装分块表，先按已有流程执行 migrate-chunks；本次没有新增业务数据库表。原对象源需持续在线直到复制验证完成。
+
+A. 从模拟/旧 S3 搬到真实 S3（已存在 attachment_chunks 清单）：
+SENSE_CABINET_OBJECT_CONFIG 仍指向旧源配置。将真实服务的平台配置另存 /etc/sensing/cabinet-target.json，文件路径均为绝对路径。
+python -m app.cabinet_admin migrate-object-store --target /etc/sensing/cabinet-target.json
+python -m app.cabinet_admin migrate-object-store --target /etc/sensing/cabinet-target.json --apply
+无 --apply 只报告受检查点验证的分块数量和密文总字节；仍属于受保护读取，会推进检查点读取版本。--apply 先探测目标权限，逐块读取源、核对清单密文 SHA-256，条件写目标并回读核对；目标已有同内容可继续，目标内容冲突绝不覆盖。全部成功后记录受检查点保护的迁移审计，最后原子替换当前活动 objects.json 为目标配置。
+任一复制失败保留活动源配置，目标可能留有已复制密文，修复网络后重复命令即可续搬。检查点提交失败不会切换；配置切换失败则原源仍可用。原源对象不删除，资产 ID、附件 ID、授权 ID、撤销状态、额度和上传会话不变，未完成上传也随清单复制后可继续。
+旧模拟源若已经销毁，清单无法还原丢失密文：迁移必须拒绝，需恢复可信源备份，不能伪造空分块或跳过摘要检查。
+
+B. 把旧 SQLite 内嵌附件迁至当前真实 S3：
+先完成 A（如适用），使活动对象配置指向真实服务，再执行：
+python -m app.cabinet_admin migrate-inline-attachments
+python -m app.cabinet_admin migrate-inline-attachments --apply
+逐附件校验旧 AAD/密文/全文件摘要，在内存中按 1 MiB 重新加密，写入目标并回读，提交同一受保护事务后才清空旧表密文字段。已迁移条目跳过，可中断后继续；不改权限、资产绑定、模板版本和有效期，不复活已停用模板。已有大文件分块不重复转换。失败附件回滚本地状态，可能产生无引用密文，由独立运维后续清理。
+旧备份/旧 SQLite 空闲页可能仍保留旧密文，本操作不宣称物理擦除。源备份和孤立对象保留期遵循已有离线 GC/恢复规则。
+
+上线验收与故障演练
+1. check-objects --probe 全项通过；确认应用不持有 admin/ 凭据，防火墙不开放 filer/master/volume、管理及 gRPC 端口。
+2. 用已审核大视频模板上传大于 8 MiB 的合成视频；上传一块后停止平台，重启后检查已提交块清单并续传，已提交块摘要不变。
+3. 关闭对象服务/阻断连接，上传/范围读取返回 503，不写入虚假完成记录，不回退 SQLite/明文；恢复同一对象数据目录后续传/读取成功。
+4. 实际停止再启动对象服务，完成跨分块 Range 读取，核对原始视频字节摘要。
+5. A 使用独立 preview 授权；B 的 stats 权限不能预览。所有者撤销后，即使 A 保留旧流 ID 和原登录会话也拒绝后续分块。
+6. 恢复撤销前 SQLite 快照，独立检查点保持最新，应返回 409；对象服务恢复不能解除该锁定。篡改/缺失密文继续按已有分块摘要、AAD 和 AEAD 校验拒绝。
+7. 迁移完成后停止旧源，使用原资产/原授权预览新目标，确认没有重新授权或重置额度。
+
+自动化命令
+CABINET_WEED_BINARY=/opt/seaweedfs/weed python -m pytest tests/test_cabinet_real_objects.py -q
+测试临时建立两个真实 HTTPS SeaweedFS 进程、独立数据目录、随机凭据与独立检查点；默认未设置二进制时显式 skip，不将跳过冒充真实服务验证。使用 ffmpeg 生成约 12 MB 视频，测试真实连接拒绝、进程重启、新平台进程恢复、撤销、防回滚、内嵌附件迁移与跨存储搬迁。
+其余回归：python -m pytest tests/test_cabinet_chunks.py tests/test_cabinet_attachments.py tests/test_cabinet_templates.py tests/test_cabinet_demo.py ../research/data_security_cabinet -q
+旧 Moto 测试仍保留作快速协议/权限回归，真实集成测试独立标识。
+
+边界
+本轮是单节点持久化对象服务，不提供跨节点容灾 SLA。完整文件最终校验和离线迁移仍占平台锁；大规模批量迁移安排维护窗口。现有 2 GiB 上限不是 2 GiB 压测结果。防宿主 root 内存窃取仍依赖另行部署的 TEE、远程证明和独立密钥服务，本轮没有宣称完成硬件隔离。
+
+官方实现依据
+https://github.com/seaweedfs/seaweedfs/releases/tag/4.52
+https://github.com/seaweedfs/seaweedfs/blob/4.52/weed/command/mini.go
+https://github.com/seaweedfs/seaweedfs/blob/4.52/weed/pb/iam.proto
+
+真实服务浏览器验收入口（只用隔离测试桶/临时账号）：
+CABINET_QA_OBJECT_CONFIG=/tmp/cabinet-objects/client/objects.json CABINET_QA_PASSWORD=<临时测试密码> PYTHONPATH=. python tests/cabinet_chunks_qa_server.py
+随后按分块验收文档运行 tests/cabinet_chunks_browser_qa.cjs。此入口现在默认要求真实对象配置；若专门做模拟回归，必须显式设置 CABINET_QA_MOTO=1，不会静默回退。
+
+本轮实测结果（2026-11-13）
+既有回归 81 项通过，6 项外部 OPA 依赖跳过，20 个子测试通过。新增真实 SeaweedFS 集成累计 7 项通过；覆盖 HTTPS 信任错误、匿名/删除/跨前缀拒绝、条件写入、新进程续写、大文件上传期间连接中断、对象服务重启、撤销、防回滚、迁移目标冲突、迁移失败恢复、旧内嵌附件及未完成上传的 CLI 迁移。
+浏览器真实服务验收通过：12,026,760 字节合成视频，模拟第二块请求失败后只补传缺块，实际播放/跳转到 8.7 秒、统计主体隔离、撤销清空和手机布局。截图：outputs/数据安全柜技术路线/真实对象存储验收/。
+正式平台数据和检查点没有迁移，真实服务验收使用独立临时数据目录。Compose config --quiet 校验通过，但 Docker daemon 未启动，不能将原生实测写成容器启动实测。

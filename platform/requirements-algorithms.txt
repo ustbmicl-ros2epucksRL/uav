@@ -1,0 +1,4 @@
+# Isolated Python 3.12 environment; official macOS/Linux wheels.
+-r requirements.txt
+ompl==2.0.1
+numpy==1.26.4

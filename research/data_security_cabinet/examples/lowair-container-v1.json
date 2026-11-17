@@ -1,0 +1,160 @@
+{
+  "format": "cabinet-container-v1",
+  "template_id": "lowair-synthetic-features",
+  "template_version": 1,
+  "template_sha256": "f5b49528b9b23e67e804f4dfeccf106b3e45f0c61f2bb70e7fe2d6db912f7501",
+  "mapper": "lowair-feature-pair-v1",
+  "template": {
+    "_ord": [
+      "provenance",
+      "samples"
+    ],
+    "provenance": {
+      "t": 9,
+      "r": true,
+      "misc": {
+        "_ord": [
+          "source",
+          "data_kind"
+        ],
+        "source": {
+          "t": 1,
+          "r": true,
+          "misc": {}
+        },
+        "data_kind": {
+          "t": 6,
+          "r": true,
+          "misc": {
+            "opt": [
+              "synthetic"
+            ],
+            "grp": []
+          }
+        }
+      }
+    },
+    "samples": {
+      "t": 8,
+      "r": true,
+      "misc": {
+        "_head": [
+          "group_id",
+          "label",
+          "feature_1",
+          "feature_2"
+        ],
+        "group_id": {
+          "t": 1,
+          "r": true,
+          "misc": {}
+        },
+        "label": {
+          "t": 6,
+          "r": true,
+          "misc": {
+            "opt": [
+              "target",
+              "background"
+            ],
+            "grp": []
+          }
+        },
+        "feature_1": {
+          "t": 2,
+          "r": true,
+          "misc": {
+            "unit": "dimensionless"
+          }
+        },
+        "feature_2": {
+          "t": 2,
+          "r": true,
+          "misc": {
+            "unit": "dimensionless"
+          }
+        }
+      }
+    }
+  },
+  "content": {
+    "provenance": {
+      "source": "built-in synthetic fixture",
+      "data_kind": "synthetic"
+    },
+    "samples": [
+      {
+        "feature_1": 0,
+        "feature_2": 0.0,
+        "label": "background",
+        "group_id": "scene-0"
+      },
+      {
+        "feature_1": 1,
+        "feature_2": 0.25,
+        "label": "target",
+        "group_id": "scene-0"
+      },
+      {
+        "feature_1": 2,
+        "feature_2": 0.5,
+        "label": "background",
+        "group_id": "scene-1"
+      },
+      {
+        "feature_1": 3,
+        "feature_2": 0.75,
+        "label": "target",
+        "group_id": "scene-1"
+      },
+      {
+        "feature_1": 4,
+        "feature_2": 1.0,
+        "label": "background",
+        "group_id": "scene-2"
+      },
+      {
+        "feature_1": 5,
+        "feature_2": 1.25,
+        "label": "target",
+        "group_id": "scene-2"
+      },
+      {
+        "feature_1": 6,
+        "feature_2": 1.5,
+        "label": "background",
+        "group_id": "scene-3"
+      },
+      {
+        "feature_1": 7,
+        "feature_2": 1.75,
+        "label": "target",
+        "group_id": "scene-3"
+      },
+      {
+        "feature_1": 8,
+        "feature_2": 2.0,
+        "label": "background",
+        "group_id": "scene-4"
+      },
+      {
+        "feature_1": 9,
+        "feature_2": 2.25,
+        "label": "target",
+        "group_id": "scene-4"
+      },
+      {
+        "feature_1": 10,
+        "feature_2": 2.5,
+        "label": "background",
+        "group_id": "scene-5"
+      },
+      {
+        "feature_1": 11,
+        "feature_2": 2.75,
+        "label": "target",
+        "group_id": "scene-5"
+      }
+    ]
+  }
+}

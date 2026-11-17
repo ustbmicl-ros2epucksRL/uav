@@ -1,0 +1,7 @@
+[
+ {"title":"北京大学 · 具身智能导论","source":"https://dean.pku.edu.cn/service/web/courseDetailEn.php?flag=1&zxjhbh=BZ2526204834020_18972","status":"官方课程大纲；暂未找到整套公开课件","description":"三维视觉、抓取、足式运动、灵巧操作、多模态模型与 Sim2Real。"},
+ {"title":"ETH Zurich · Advanced Topics in Embodied Intelligence","source":"https://cvg.ethz.ch/lectures/Embodied-Intelligence/","status":"课件要求 ETH 账号，未下载","description":"感知、语言与规划的论文研讨。课程页可查看当前安排及往年入口。"},
+ {"title":"ETH Zurich · 2025 年春季归档","source":"https://cvg.ethz.ch/lectures/Embodied-Intelligence/2025sp","status":"公开课程安排；课件要求 ETH 账号","description":"往年具身智能研讨课程。"},
+ {"title":"ETH Zurich · 2025 年秋季归档","source":"https://cvg.ethz.ch/lectures/Embodied-Intelligence/2025au","status":"公开论文主题；课件要求 ETH 账号","description":"包含 Diffusion Policy、OpenVLA、EgoVLA、SayCan 等研讨主题。"},
+ {"title":"香港中文大学（深圳）· Embodied Artificial Intelligence","source":"https://www.cuhk.edu.cn/en/course/20152","status":"官方课程介绍；暂未找到整套公开课件","description":"多模态感知、示范采集、规划、强化学习、模仿学习与仿真迁移。"}
+]

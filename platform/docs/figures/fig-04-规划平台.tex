@@ -1,0 +1,59 @@
+% 编译：xelatex fig-04-规划平台.tex
+\documentclass[tikz,border=14pt]{standalone}
+\usepackage[fontset=none]{ctex}
+\setCJKmainfont{Songti SC}
+\setCJKsansfont{Heiti SC}
+\usetikzlibrary{arrows.meta}
+
+\definecolor{plan}{RGB}{31,78,121}
+\definecolor{planfill}{RGB}{232,238,245}
+\definecolor{muted}{RGB}{90,90,90}
+\definecolor{linec}{RGB}{180,176,168}
+
+\tikzset{
+  font=\small,
+  arr/.style={-{Latex[length=2.4mm]},line width=0.8pt},
+  box/.style={draw,rounded corners=2pt,align=center,inner sep=6pt},
+  card/.style={box,align=left,inner sep=8pt},
+  note/.style={font=\footnotesize,text=muted,align=left}
+}
+
+\begin{document}
+\begin{tikzpicture}
+  \node[font=\large\bfseries,anchor=west] at (0,0.2) {规划功能};
+  \node[note,anchor=west] at (0,-0.35) {同一套平台里的规划部分，沿用申报书子项目四。现有程序是仿真实验台，还不是完整功能。};
+
+  \node[box,draw=plan,fill=plan,text=white,font=\bfseries,minimum width=7.2cm,minimum height=0.9cm] (vis) at (8.2,-1.55) {三维可视化与方案导出};
+
+  \node[card,draw=plan,fill=planfill,text width=4.5cm,minimum height=2.35cm] (c1) at (2.6,-3.7) {%
+    {\bfseries\color{plan} 覆盖建模}\\[3pt]
+    三维网格、单设备覆盖、遮挡\\
+    融合覆盖、盲区、补点建议\\[5pt]
+    {\footnotesize 现状：50 米网格，简化遮挡}%
+  };
+  \node[card,draw=plan,fill=planfill,text width=4.5cm,minimum height=2.35cm] (c2) at (8.2,-3.7) {%
+    {\bfseries\color{plan} 干扰与协同精度}\\[3pt]
+    干扰衰减、多站协同、精度场\\
+    定位、识别、连续跟踪\\[5pt]
+    {\footnotesize 现状：预设噪声，尚无 CRLB 精度场}%
+  };
+  \node[card,draw=plan,fill=planfill,text width=4.5cm,minimum height=2.35cm] (c3) at (13.8,-3.7) {%
+    {\bfseries\color{plan} 按需规划}\\[3pt]
+    站址初筛、自适应加密\\
+    设备组合与挂载参数\\[5pt]
+    {\footnotesize 现状：贪心增补实验基线}%
+  };
+  \draw[arr,plan] (c1.east) -- (c2.west);
+  \draw[arr,plan] (c2.east) -- (c3.west);
+  \draw[arr,plan] (c2.north) -- (vis.south);
+
+  \node[note,anchor=north,align=center] at (8.2,-5.15) {覆盖与精度约束进入规划，规划结果再回到可视化};
+
+  \node[card,draw=linec,fill=white,text width=15.2cm,anchor=north] (bd) at (8.2,-5.7) {%
+    {\bfseries 与业务、飞控功能的边界}\\[3pt]
+    向外只提供场景、覆盖和规划方案的只读结果。\\
+    不接收飞行申请，不保存飞手档案，不向飞机发送解锁或航线指令。\\
+    运行数据回灌、动态优化和云边端调度仍属于规划功能的后续研究，不并入业务菜单。%
+  };
+\end{tikzpicture}
+\end{document}

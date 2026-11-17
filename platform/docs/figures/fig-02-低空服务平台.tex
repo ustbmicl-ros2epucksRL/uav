@@ -1,0 +1,80 @@
+% 编译：xelatex fig-02-低空服务平台.tex
+\documentclass[tikz,border=14pt]{standalone}
+\usepackage[fontset=none]{ctex}
+\setCJKmainfont{Songti SC}
+\setCJKsansfont{Heiti SC}
+\usetikzlibrary{fit,backgrounds}
+
+\definecolor{svc}{RGB}{29,106,79}
+\definecolor{svcfill}{RGB}{231,242,236}
+\definecolor{flt}{RGB}{138,75,8}
+\definecolor{fltfill}{RGB}{248,239,228}
+\definecolor{muted}{RGB}{90,90,90}
+\definecolor{linec}{RGB}{180,176,168}
+\definecolor{reserve}{RGB}{243,241,236}
+
+\tikzset{
+  font=\small,
+  box/.style={draw,rounded corners=2pt,align=center,inner sep=6pt},
+  card/.style={box,align=left,inner sep=8pt},
+  note/.style={font=\footnotesize,text=muted,align=left}
+}
+
+\begin{document}
+\begin{tikzpicture}[
+  mchip/.style={draw=svc!45,fill=svcfill,rounded corners=2pt,minimum height=0.78cm,text width=3.45cm,align=center,inner sep=4pt},
+  rchip/.style={mchip,draw=linec,fill=reserve},
+  echip/.style={draw=flt!45,fill=fltfill,rounded corners=2pt,minimum height=1.15cm,align=center,inner sep=4pt,font=\small}
+]
+  \node[font=\large\bfseries,anchor=west] at (0,0.2) {业务功能};
+  \node[note,anchor=west] at (0,-0.35) {同一套平台里的业务办理部分。电子政务外网已去掉。直播与识别不进入本期页面。};
+
+  \node[font=\bfseries,anchor=west] at (0.25,-1.15) {使用方视图};
+  \node[mchip] (v1) at (2.2,-1.85) {各类门户};
+  \node[mchip] (v2) at (6.2,-1.85) {城市云脑};
+  \node[mchip] (v3) at (10.2,-1.85) {移动终端};
+  \begin{scope}[on background layer]
+  \node[draw=linec,rounded corners=2pt,fit={(v1)(v3)(0.1,-1.05)},inner sep=8pt] {};
+  \end{scope}
+
+  \node[font=\bfseries,text=svc,anchor=west] (ot) at (0.25,-3.05) {无人机运行管控};
+  \node[mchip] (o1) at (2.15,-3.75) {飞行控制};
+  \node[rchip] (o2) at (6.05,-3.75) {梯级直播（预留）};
+  \node[rchip] (o3) at (2.15,-4.7) {AI 智能识别（预留）};
+  \node[mchip] (o4) at (6.05,-4.7) {计划管理};
+  \node[mchip] (o5) at (2.15,-5.65) {三维航线与位置};
+  \node[mchip] (o6) at (6.05,-5.65) {设备管理};
+  \node[note,anchor=north west] at (0.25,-6.2) {飞行控制只调用本平台的飞控功能。灰色模块本期不建设。};
+  \begin{scope}[on background layer]
+  \node[draw=svc,rounded corners=2pt,fit={(ot)(o6)(0.15,-6.85)},inner sep=8pt] {};
+  \end{scope}
+
+  \node[font=\bfseries,text=svc,anchor=west] (bt) at (8.7,-3.05) {低空业务管理};
+  \node[mchip] (b1) at (10.7,-3.75) {飞行申请审批};
+  \node[mchip] (b2) at (14.6,-3.75) {飞行任务调度};
+  \node[mchip] (b3) at (10.7,-4.7) {任务数据共享};
+  \node[mchip] (b4) at (14.6,-4.7) {事件管理};
+  \node[mchip] (b5) at (10.7,-5.65) {飞行服务绩效};
+  \node[mchip] (b6) at (14.6,-5.65) {一体化综合展示};
+  \node[note,anchor=north west,text width=7.2cm] at (8.7,-6.2) {这六项是第一期必须能办理的业务。综合展示不另建平台。};
+  \begin{scope}[on background layer]
+  \node[draw=svc,rounded corners=2pt,fit={(bt)(b6)(8.55,-6.85)},inner sep=8pt] {};
+  \end{scope}
+
+  \node[card,draw=linec,fill=white,text width=16.3cm,anchor=north west] (ext) at (0,-7.35) {%
+    {\bfseries 本期保留的外部条件}\\[3pt]
+    不设电子政务外网，审批人在页面上填写姓名。\\
+    基础地理信息：与地面站共用锚点和底图，机场、航线用同一套坐标。\\
+    下发前确认飞控在线；场景名称来自规划功能。%
+  };
+
+  \node[font=\bfseries,text=flt,anchor=west] (rt) at (0.3,-11.15) {执行资源（同一本台账）};
+  \node[echip,text width=3.3cm] (r1) at (2.2,-12.45) {自动化机场\\{\footnotesize 起降点，可预留}};
+  \node[echip,text width=3.8cm] (r2) at (6.3,-12.45) {无人机 + 挂载\\{\footnotesize 一机一套任务载荷}};
+  \node[echip,text width=2.8cm] (r3) at (10.0,-12.45) {飞手\\{\footnotesize 与飞机绑定}};
+  \node[echip,draw=flt,text width=3.3cm] (r4) at (13.6,-12.45) {飞控功能\\{\footnotesize 下发后才执行}};
+  \begin{scope}[on background layer]
+  \node[draw=flt,rounded corners=2pt,fit={(rt)(r1)(r4)},inner sep=8pt] {};
+  \end{scope}
+\end{tikzpicture}
+\end{document}

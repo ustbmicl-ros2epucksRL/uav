@@ -1,0 +1,29 @@
+% !TeX program = xelatex
+% Publish font-independent PDF and PNG with: sh build-cabinet-storage.sh
+\documentclass[border=5mm,tikz]{standalone}
+\usepackage[UTF8,fontset=fandol]{ctex}
+\usetikzlibrary{arrows.meta,positioning}
+\definecolor{ink}{HTML}{193448}
+\definecolor{edgec}{HTML}{507184}
+\tikzset{box/.style={draw=edgec,rounded corners=2pt,line width=.7pt,align=center,text=ink,
+ minimum height=16mm,text width=41mm,fill=blue!3,font=\small},
+ flow/.style={-{Stealth[length=2mm]},draw=edgec,line width=.75pt},
+ labeltext/.style={font=\footnotesize,fill=white,inner sep=1.5pt,text=ink}}
+\begin{document}
+\begin{tikzpicture}[x=1cm,y=1cm]
+\node[font=\Large\bfseries,text=ink] at (0,4.6) {数据保险箱的存储与授权读取};
+\node[box] (user) at (-5.15,2.7) {所有者与授权主体\\上传数据或请求视频区间};
+\node[box,fill=teal!9] (api) at (0,2.7) {平台执行进程\\检查授权、分块加解密};
+\node[box] (kbs) at (5.15,2.7) {Trustee AS / KBS\\证明验证、按策略释放 KEK};
+\node[box] (obj) at (-5.15,-.3) {SeaweedFS 对象桶\\每个对象保存一个分块密文};
+\node[box] (db) at (0,-.3) {平台 SQLite\\授权、额度、分块索引\\DEK 信封、nonce、摘要};
+\node[box] (cp) at (5.15,-.3) {独立 HTTPS 检查点\\保存最新状态版本与摘要};
+\draw[flow,<->] (user.east)--(api.west);
+\draw[flow,<->] (api.east)--(kbs.west);
+\draw[flow,<->] (api.south west)--node[labeltext,sloped,above]{密文读写}(obj.north);
+\draw[flow,<->] (api.south)--node[labeltext,right]{清单与授权状态}(db.north);
+\draw[flow,<->] (api.south east)--node[labeltext,sloped,above]{校验与条件提交}(cp.north);
+\node[align=left,text width=15cm,font=\small,text=ink,anchor=north] at (0,-1.65)
+{视频按 1 MiB 分块，每块使用独立 DEK 和 AES-GCM 加密。授权主体共享同一组对象，平台逐次检查权限、撤销和额度后返回请求区间。密钥迁移更新数据库内的 DEK 信封。结构化资产及计算结果的密文直接保存在 SQLite 中。};
+\end{tikzpicture}
+\end{document}

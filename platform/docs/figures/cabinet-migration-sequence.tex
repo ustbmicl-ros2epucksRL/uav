@@ -1,0 +1,45 @@
+% !TeX program = xelatex
+% Publish with: sh build-cabinet-storage.sh cabinet-migration-sequence
+\documentclass[tikz,border=4mm]{standalone}
+\usepackage[UTF8,fontset=fandol]{ctex}
+\usetikzlibrary{arrows.meta}
+\definecolor{ink}{HTML}{193448}
+\definecolor{accent}{HTML}{17635E}
+\definecolor{stop}{HTML}{913A35}
+\tikzset{actor/.style={draw=ink,fill=blue!4,rounded corners=2pt,minimum height=8mm,font=\small\bfseries},
+msg/.style={-{Stealth[length=2mm]},draw=ink},ret/.style={msg,dashed},
+label/.style={midway,above,fill=white,inner sep=1pt,font=\footnotesize}}
+\newcommand{\phase}[2]{\fill[teal!8] (-.4,#1-.23) rectangle (15.4,#1+.23);
+\node[anchor=west,font=\small\bfseries,text=accent] at (-.28,#1){#2};}
+\newcommand{\send}[5]{\draw[#1] (#2,#4)--node[label]{#5}(#3,#4);}
+\begin{document}
+\begin{tikzpicture}[x=1cm,y=-1cm,text=ink]
+\foreach \x/\name in {.9/本地 SQLite,5.4/离线迁移进程,10.2/Trustee AS／KBS,14.6/独立检查点}{
+\draw[gray!55,dashed] (\x,.35)--(\x,16.4);
+\node[actor] at (\x,0){\name};}
+\phase{.92}{一　停写并校验演示库}
+\send{msg}{5.4}{14.6}{1.70}{以旧凭据读取同一命名空间的版本和摘要}
+\send{ret}{.9}{5.4}{2.42}{读取演示库，核对状态摘要}
+\send{msg}{5.4}{.9}{3.15}{复制为候选库，保留授权记录}
+\phase{3.84}{二　逐块重封装数据密钥}
+\send{msg}{5.4}{10.2}{4.63}{提交证明，请求新密钥}
+\send{ret}{10.2}{5.4}{5.34}{策略放行，释放新 KEK}
+\node[anchor=west,align=left,text width=14.5cm,fill=white,font=\footnotesize] at (.2,6.12)
+{用演示 KEK 解开旧信封，取出原 DEK；用新 KEK 和原认证数据封装同一 DEK，再解封核对。\\视频块始终由原 DEK 加密，SeaweedFS 中的对象键和密文均保持不变，无须重新上传。};
+\send{msg}{5.4}{.9}{7.10}{更新信封，候选库落盘}
+\phase{7.80}{三　条件提交并切换凭据}
+\send{msg}{5.4}{14.6}{8.62}{携旧版本、旧摘要、新库摘要及新凭据摘要提交轮换}
+\node[anchor=east,fill=white,font=\footnotesize] at (14.6,9.19){版本与旧摘要均匹配才原子更新；提交后旧凭据失效。};
+\send{ret,stop}{14.6}{5.4}{9.99}{中断场景：检查点已提交，回执丢失，本地仍是旧库}
+\phase{10.69}{四　重跑原命令，从权威状态恢复}
+\send{msg}{5.4}{14.6}{11.51}{旧凭据失效后，用新凭据读取最新摘要}
+\send{ret}{.9}{5.4}{12.23}{检查活动库和候选库}
+\node[anchor=west,align=left,text width=14.7cm,fill=white,font=\footnotesize] at (.15,13.02)
+{用新状态密钥重算摘要。候选库匹配则原子替换活动库；活动库已匹配则直接完成。\\两库均不匹配时停止恢复，避免把过期授权重新登记为有效状态。};
+\phase{14.00}{五　验证授权连续性}
+\node[anchor=west,align=left,text width=15cm,fill=white,font=\footnotesize] at (.02,15.03)
+{Mac 已验证：12 个视频块的密文摘要一致，12 个 DEK 信封全部更新。旧登录失效；重新登录后，B 的撤销仍生效，A 剩余 4 次预览。额度耗尽后拒绝新预览。};
+\node[anchor=west,align=left,text width=15cm,fill=white,font=\footnotesize] at (.02,16.20)
+{Ubuntu 实机待验证：在 SNP／TDX 机密来宾内按真实度量取钥，复测信封重封装、异机检查点切换，以及实际断电后的持久性与授权恢复。};
+\end{tikzpicture}
+\end{document}

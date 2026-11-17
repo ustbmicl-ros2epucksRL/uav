@@ -1,0 +1,31 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>区域任务航线规划</title>
+<style>body{font:16px system-ui;max-width:760px;margin:4rem auto;padding:0 1rem}button,a{padding:.5rem}table{border-collapse:collapse}th,td{padding:.4rem 1rem;border-bottom:1px solid #ccd}</style>
+<h1>区域任务航线规划</h1><p id="task"></p><button id="plan">规划批准航点之间的航线</button><p role="status" id="status"></p><table hidden><thead><tr><th>航点</th><th>东 / m</th><th>北 / m</th><th>相对高度 / m</th></tr></thead><tbody></tbody></table><p><a id="back">返回任务调度</a></p>
+<script>
+const task=location.pathname.split('/').pop();
+document.querySelector('#task').textContent=task;
+document.querySelector('#back').href=location.protocol+'//'+location.hostname+':8771/?tab=tasks&task='+encodeURIComponent(task);
+const planButton=document.querySelector('#plan'),statusText=document.querySelector('#status');
+const endpoint='/api/flight-route/'+encodeURIComponent(task);
+function display(plan){
+ const body=document.querySelector('tbody');body.replaceChildren();
+ for(const [i,p] of plan.route.entries()){
+  const row=body.insertRow();
+  for(const value of [i+1,...p])row.insertCell().textContent=value;
+ }
+ body.closest('table').hidden=false;
+ const conclusion=plan.check.passed?(plan.approved_route_matches?'航线通过检查，与批准航线一致':'绕障航线已变化，需要重新申请审批'):'航线未通过检查';
+ statusText.textContent=plan.application_id+' · '+conclusion+' · '+plan.check.distance_m+' m';
+}
+async function load(method){
+ planButton.disabled=true;
+ try{
+  const response=await fetch(endpoint,{method});
+  if(method==='GET'&&response.status===404)return;
+  const plan=await response.json();if(!response.ok)throw Error(plan.detail);
+  display(plan);
+ }catch(error){statusText.textContent=error.message;}finally{planButton.disabled=false;}
+}
+planButton.onclick=()=>load('POST');
+load('GET');
+</script></html>

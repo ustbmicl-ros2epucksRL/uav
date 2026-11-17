@@ -1,0 +1,51 @@
+{
+  "heft": {
+    "repository": "https://github.com/mrocklin/heft",
+    "commit": "5e976e9c5c9d6ef6f608e780f49dc5bcbcc42745",
+    "patches": [
+      "Python 3 relative import",
+      "Directed communication source/destination corrected",
+      "Exact-fit schedule gaps accepted",
+      "Deterministic tie breaking"
+    ]
+  },
+  "hatto": {
+    "repository": "https://github.com/Shuaijun-LIU/HATTO-UFog",
+    "commit": "542b65fd19743f29809aa1a06054aec8cb89d622",
+    "patches": [
+      "Relative imports for isolated ACS-DS module",
+      "Undefined dist in optional backtrack branch corrected to self._dist"
+    ],
+    "scope": "ACS-DS only; full PSO framework blocked by missing env module"
+  },
+  "files": {
+    "heft/core.py": {
+      "upstream_sha256": "a2deb9ffbee548a5f0e933d7f0a17753138f0a2ac571cbf94cd733577db700c5",
+      "local_sha256": "075cfd4503f729377d85e6ecfcdbc853acae0ace848f7f9f75d8d4c4a1ff3832"
+    },
+    "heft/util.py": {
+      "upstream_sha256": "7daa1f0e53f6938ce7ab2520a7149b361c50ee9359626e6cfbb3e2bcac584b27",
+      "local_sha256": "7daa1f0e53f6938ce7ab2520a7149b361c50ee9359626e6cfbb3e2bcac584b27"
+    },
+    "heft/LICENSE.txt": {
+      "upstream_sha256": "18cce17c0e6324d5f263e892ec3e909f4ec827235e53590dfcf4e938161c8000",
+      "local_sha256": "18cce17c0e6324d5f263e892ec3e909f4ec827235e53590dfcf4e938161c8000"
+    },
+    "hatto/acs_ds.py": {
+      "upstream_sha256": "c4ce744abf03ff03d8639d75a90ba77fee7e42760033973032c8ceb87318f8d2",
+      "local_sha256": "e2b2ffb92b2b6071d19ba68e5a531f750cdf8699a394408b44d14a444625fd98"
+    },
+    "hatto/base.py": {
+      "upstream_sha256": "7e2864743a5528a29483f083664cf83dc7ae8cc0a3d9d31a7979e993eeb53e43",
+      "local_sha256": "7e2864743a5528a29483f083664cf83dc7ae8cc0a3d9d31a7979e993eeb53e43"
+    },
+    "hatto/seeding.py": {
+      "upstream_sha256": "4709dea206017d16d53a0fc49b191e94ca84e21f4b3dbd52a3f8a840827ac936",
+      "local_sha256": "4709dea206017d16d53a0fc49b191e94ca84e21f4b3dbd52a3f8a840827ac936"
+    },
+    "hatto/LICENSE": {
+      "upstream_sha256": "51d2e02f5db839fcd034f67609e2b3e5736d963713fd20ac4bff03593b4a4829",
+      "local_sha256": "51d2e02f5db839fcd034f67609e2b3e5736d963713fd20ac4bff03593b4a4829"
+    }
+  }
+}

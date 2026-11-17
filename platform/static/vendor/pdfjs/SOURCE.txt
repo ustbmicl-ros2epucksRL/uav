@@ -1,0 +1,5 @@
+Mozilla PDF.js / pdfjs-dist 5.6.205
+Source: bundled npm package pdfjs-dist, copied from Codex primary runtime.
+Project: https://github.com/mozilla/pdf.js
+License: Apache-2.0; see LICENSE and asset-specific licenses in subdirectories.
+Used for local course PDF rendering; no CDN runtime dependency.
