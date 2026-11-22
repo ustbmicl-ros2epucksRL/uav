@@ -17,7 +17,7 @@ if (embedded) {
 const initialScene = agentQuery.get('scene');
 if (['urban','corridor','electromagnetic'].includes(initialScene)) $('scene').value = initialScene;
 let record = null, timer = null, generation = 0;
-const nav = {tasks:'规划任务',resources:'资源配置',diagnosis:'感知诊断',planning:'网络规划',plans:'方案管理',demonstration:'示范应用',research:'研究问题',agents:'研究智能体'};
+const nav = {tasks:'规划任务',resources:'资源配置',diagnosis:'感知诊断',planning:'网络规划',plans:'方案管理',demonstration:'示范应用',research:'研究问题',agents:'研究智能体','agents/manage':'智能体管理'};
 for (const [key,label] of Object.entries(nav)) {
     const a = document.createElement('a');
     a.href = root + '/' + key; a.textContent = label;
@@ -182,6 +182,11 @@ function render(data) {
         $('trace').append(renderEvidence(data, visibleEvidenceCount));
     }
     record = data;
+    if (!embedded && window.history && data.id && agentQuery.get('run') !== data.id) {
+        agentQuery.set('run', data.id);
+        agentQuery.delete('workflow');
+        window.history.replaceState(null, '', location.pathname + '?' + agentQuery);
+    }
     $('history').value = data.id;
     $('run-context').textContent = data.request ? scopeOf(data.request) + ' · ' + data.request.question : '';
     $('stage').textContent = [statusNames[data.status] || data.status, data.stage, data.error].filter(Boolean).join(' · ');
@@ -279,7 +284,22 @@ $('memory-rank').onclick = async () => {
     finally { button.disabled = false; }
 };
 (async () => {
+    const requestedRun = agentQuery.get('run');
+    const requestedWorkflow = agentQuery.get('workflow');
+    if (['platform', 'research'].includes(requestedWorkflow)) {
+        $('workflow').value = requestedWorkflow;
+    }
     $('workflow').onchange();
+    if (requestedRun !== null) {
+        if (/^[a-f0-9]{32}$/.test(requestedRun)) {
+            controls(true);
+            $('cancel').disabled = true;
+            $('stage').textContent = '正在读取所选运行记录…';
+            poll(requestedRun, ++generation);
+        } else {
+            $('stage').textContent = '运行编号无效，请从管理台重新选择。';
+        }
+    }
     refreshHistory().catch(error => { $('history-status').textContent = '历史记录读取失败：' + error.message; });
     api('tools').then(data => { $('tool-catalog').textContent = data.tools.map(tool => tool.name + '：' + tool.description).join('\n'); })
         .catch(error => { $('tool-catalog').textContent = error.message; });
@@ -287,6 +307,10 @@ $('memory-rank').onclick = async () => {
         const status = await api('status');
         $('model-status').textContent = status.provider + ' · ' + status.model + ' · ' + (status.available ? '模型已安装，可开始研究' : '模型未就绪；仍可查看历史及调用只读工具');
         const id = status.active_runs[0] || localStorage.getItem(activeKey) || localStorage.getItem('research-agent-active');
-        if (id && generation === 0) { controls(true); poll(id,++generation); }
+        if (requestedRun === null && !requestedWorkflow && id && generation === 0) {
+            controls(true);
+            $('cancel').disabled = true;
+            poll(id, ++generation);
+        }
     } catch (error) { $('model-status').textContent = '模型连接检查失败：' + error.message; }
 })();

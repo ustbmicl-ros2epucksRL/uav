@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, Request, Query
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, ConfigDict, Field
 import httpx
-from . import agent_tools, memory_value, store
+from . import agent_run_management, agent_tools, memory_value, store
 from .schemas import ModelSettings
 
 router = APIRouter()
@@ -232,10 +232,22 @@ async def execute(record):
         save(record)
         JOBS.pop(record['id'], None)
 
+def agent_page(request: Request, template: str):
+    from html import escape
+
+    root_path = escape(request.scope.get("root_path", "").rstrip("/"), quote=True)
+    html = (store.ROOT / "static" / template).read_text()
+    return HTMLResponse(html.replace("<head>", f'<head><base href="{root_path}/">', 1))
+
+
 @router.get('/agents')
-def page(request:Request):
-    html=(store.ROOT/'static/research-agent.html').read_text()
-    return HTMLResponse(html.replace('<head>','<head><base href="'+request.scope.get('root_path','')+'/">'))
+def page(request: Request):
+    return agent_page(request, "research-agent.html")
+
+
+@router.get('/agents/manage')
+def management_page(request: Request):
+    return agent_page(request, "agent-management.html")
 
 @router.get('/api/research-agent/status')
 async def status():
@@ -272,6 +284,15 @@ def call_platform_tool(name: str, context: agent_tools.ToolContext):
     if name not in agent_tools.DESCRIPTIONS:
         raise HTTPException(422, '工具不在只读白名单中')
     return agent_tools.execute(name, agent_tools.snapshot(context))
+
+
+@router.get('/api/research-agent/management/runs')
+def managed_runs(q: str = Query('', max_length=300),
+                 status: agent_run_management.RunStatus | None = None,
+                 workflow: agent_run_management.Workflow | None = None,
+                 offset: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=100)):
+    return agent_run_management.query(store.DATA / 'research_agent_runs', JOBS, _interruption_lock,
+                                      q=q, status=status, workflow=workflow, offset=offset, limit=limit)
 
 
 @router.get('/api/research-agent/runs')

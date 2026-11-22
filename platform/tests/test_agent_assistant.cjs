@@ -19,6 +19,8 @@ function setup({nested=false,existing=false,src='http://localhost:8772/network/s
 test('assistant starts collapsed and reopening preserves its iframe and host content',()=>{
     const s=setup();assert.equal(s.body.children.length,1);assert.equal(s.panel.hidden,true);assert.equal(s.frame.src,undefined);
     s.launcher.onclick();const url=new URL(s.frame.src);assert.equal(url.pathname,'/network/agents');assert.equal(url.searchParams.get('scene'),'corridor');
+    const manager=s.elements.find(el=>el.textContent==='管理台 ↗');
+    assert.equal(new URL(manager.href).pathname,'/network/agents/manage');assert.equal(manager.target,'_blank');
     assert.equal(s.panel.hidden,false);s.close.onclick();assert.equal(s.panel.hidden,true);assert(s.launcher.focused);
     s.launcher.onclick();assert.equal(s.frame.srcWrites,1);assert.equal(s.body.children.length,1);
 });

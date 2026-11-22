@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 
-function setup(pathname='/network/agents', search='') {
+function setup(pathname='/network/agents', search='', activeRuns=[]) {
     const elements={}, calls=[], saved=new Map(), timers=[], classes=new Set(), events={}, messages=[];
     class Element {
         constructor(){ this.value=''; this.children=[]; this.disabled=false; this.hidden=false; this.textContent=''; }
@@ -17,7 +17,7 @@ function setup(pathname='/network/agents', search='') {
     const state={run:{id:'a'.repeat(32),status:'completed',stage:'平台诊断完成',trace:[],report:{conclusion:'缺少验算',evidence:['无记录'],evidence_ids:['ev-1'],limitations:['非现场'],next_steps:[]}}};
     const fetch=async (url,options={})=>{
         calls.push({url,options});let data;
-        if(url.endsWith('/status'))data={available:false,model:'local',provider:'Ollama',active_runs:[]};
+        if(url.endsWith('/status'))data={available:false,model:'local',provider:'Ollama',active_runs:activeRuns};
         else if(url.endsWith('/tools'))data={tools:[{name:'scene_snapshot',description:'配置快照'}]};
         else if(url.endsWith('/runs')&&options.method==='POST')data={...state.run,status:'running',stage:'选择工具'};
         else if(url.endsWith('/runs'))data={runs:[{...state.run,request:{question:'<img onerror=alert(1)>'},created_at:'2026-11-16'}]};
@@ -124,4 +124,27 @@ test('empty input stays in the composer and makes no request', async () => {
     await s.get('run').onclick();
     assert(s.get('question').focused);
     assert.equal(s.calls.filter(c => c.options.method === 'POST').length, 0);
+});
+
+
+test('management opens precisely the chosen archive even when another run is active', async () => {
+    const chosen = 'd'.repeat(32), active = 'e'.repeat(32);
+    const s = setup('/network/agents', '?run=' + chosen, [active]);
+    await ready();
+    const details = s.calls.filter(c => /\/runs\/[0-9a-f]{32}$/.test(c.url));
+    assert.deepEqual(details.map(c => c.url), ['/network/api/research-agent/runs/' + chosen]);
+    assert.equal(s.calls.filter(c => c.options.method === 'POST').length, 0);
+});
+
+test('a management workflow link prepares a draft and an invalid run link stays local', async () => {
+    const active = ['d'.repeat(32)];
+    const draft = setup('/agents', '?workflow=research', active);
+    const invalid = setup('/agents', '?run=../other', active);
+    await ready();
+    assert.equal(draft.get('workflow').value, 'research');
+    assert.equal(draft.get('task-label').hidden, false);
+    assert.match(invalid.get('stage').textContent, /编号无效/);
+    for (const s of [draft, invalid]) {
+        assert.equal(s.calls.filter(c => c.options.method === 'POST' || c.url.includes('/runs/')).length, 0);
+    }
 });

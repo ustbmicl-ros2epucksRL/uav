@@ -35,7 +35,12 @@
     full.target = '_blank'; full.rel = 'noopener'; full.textContent = '独立窗口 ↗';
     const close = document.createElement('button'); close.type = 'button'; close.textContent = '收起';
     close.setAttribute('aria-label', '收起平台助手');
-    heading.append(title, full, close);
+    const manage = document.createElement('a');
+    manage.href = new URL('../agents/manage', script.src).href;
+    manage.target = '_blank';
+    manage.rel = 'noopener';
+    manage.textContent = '管理台 ↗';
+    heading.append(title, manage, full, close);
     const loadStatus = document.createElement('p'); loadStatus.className = 'load-status';
     loadStatus.textContent = '正在加载助手；如未显示，可打开独立窗口重试。';
     const frame = document.createElement('iframe'); frame.title = '平台助手诊断与证据';

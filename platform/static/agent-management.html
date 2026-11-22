@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>智能体运行管理</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="static/agent-management.css">
+    <script src="static/agent-management.js" defer></script>
+</head>
+<body>
+<header>
+    <div class="topbar">
+        <nav aria-label="当前位置"><a href="./">感知网络规划</a><span aria-hidden="true"> / </span>智能体</nav>
+        <a class="action-link" href="agents">打开助手</a>
+    </div>
+    <div class="page-title"><h1>智能体运行管理</h1></div>
+</header>
+<main>
+    <section class="overview" aria-labelledby="overview-title">
+        <div class="section-heading">
+            <h2 id="overview-title">全部运行概览</h2>
+            <button id="refresh" type="button">刷新数据</button>
+        </div>
+        <dl class="metrics">
+            <div><dt>全部记录</dt><dd id="total">—</dd></div>
+            <div><dt>运行中</dt><dd id="running">—</dd></div>
+            <div><dt>已完成</dt><dd id="completed">—</dd></div>
+            <div><dt>失败</dt><dd id="failed">—</dd></div>
+            <div><dt>已中断</dt><dd id="interrupted">—</dd></div>
+            <div><dt>已停止</dt><dd id="cancelled">—</dd></div>
+        </dl>
+        <p class="muted" id="workflow-counts"></p>
+        <p class="notice" id="unreadable" hidden></p>
+    </section>
+
+    <section class="workflows" aria-labelledby="workflows-title">
+        <h2 id="workflows-title">发起分析</h2>
+        <div class="workflow-links">
+            <div><a href="agents?workflow=platform">平台诊断 →</a><p>从所选场景的配置、只读工具和保存记录中核对结论。</p></div>
+            <div><a href="agents?workflow=research">研究算例 →</a><p>按子项目选择合成实验，查看参数、计算结果和模型解释。</p></div>
+        </div>
+    </section>
+
+    <section class="records" aria-labelledby="records-title">
+        <h2 id="records-title">运行记录</h2>
+        <form id="filters" role="search">
+            <label class="query">搜索记录<input type="search" id="query" maxlength="200" placeholder="问题或运行编号"></label>
+            <label>状态
+                <select id="status-filter">
+                    <option value="">全部状态</option>
+                    <option value="running">运行中</option>
+                    <option value="completed">已完成</option>
+                    <option value="failed">失败</option>
+                    <option value="interrupted">已中断</option>
+                    <option value="cancelled">已停止</option>
+                </select>
+            </label>
+            <label>工作流
+                <select id="workflow-filter">
+                    <option value="">全部工作流</option>
+                    <option value="platform">平台诊断</option>
+                    <option value="research">研究算例</option>
+                </select>
+            </label>
+            <button type="submit" class="primary">查询</button>
+        </form>
+        <p id="records-status" role="status">正在读取运行记录…</p>
+        <div id="run-list"></div>
+        <div class="pagination" aria-label="运行记录分页">
+            <button type="button" id="previous" disabled>上一页</button>
+            <span id="page-info"></span>
+            <button type="button" id="next" disabled>下一页</button>
+        </div>
+    </section>
+
+    <section class="capabilities" aria-labelledby="capabilities-title">
+        <h2 id="capabilities-title">模型与工具</h2>
+        <p id="model-status" role="status">正在检查模型连接…</p>
+        <details id="tool-details">
+            <summary>只读工具目录 <span id="tool-count"></span></summary>
+            <dl id="tools"></dl>
+            <p class="muted" id="tool-status" role="status"></p>
+        </details>
+    </section>
+</main>
+</body>
+</html>
