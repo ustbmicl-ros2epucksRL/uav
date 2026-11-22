@@ -68,23 +68,27 @@ def fields(scene,points,request,calibration=None,initial=None):
         pd,db,r,delta,mask=device_field(scene,points,d,request,valid)
         per_device[d['id']]=pd
         miss*=1-pd;sinr=np.maximum(sinr,np.where(mask,db,-80));count+=pd>=request.pd_threshold
-        u=delta/np.maximum(r[:,None],1)
-        sigma={'RADAR':24,'RF':48,'EO':12}.get(d['type'],18)
-        if calibration and calibration.get('sensor_id')==d['id']:sigma=calibration['sigma_m']
-        # Local tangent form of range + two angular measurement Jacobians.
-        # Optical/RF channels have no standalone range; only triangulation resolves depth.
-        outer=u[:,:,None]*u[:,None,:]
-        angular_sigma={'RADAR':.02,'RF':.045,'EO':.008,'IR':.012}.get(d['type'],.02)
-        if calibration and calibration.get('sensor_id')==d['id']:
-            angular_sigma*=sigma/{'RADAR':24,'RF':48,'EO':12,'IR':18}.get(d['type'],18)
-        tangent=(np.eye(3)[None]-outer)/np.maximum(r*angular_sigma,1)[:,None,None]**2
-        information=tangent+(outer/(sigma*sigma) if d['type']=='RADAR' else 0)
-        fim+=information*pd[:,None,None]
+        fim+=device_information(d,r,delta,calibration)*pd[:,None,None]
     eig=np.linalg.eigvalsh(fim);observable=(eig[:,0]>1e-8)&valid
     precision=np.full(n,np.inf)
     precision[observable]=np.sqrt((1/eig[observable]).sum(axis=1))
     pd=1-miss
     return {'pd':pd,'sinr_db':sinr,'precision_m':precision,'observable':observable,'count':count,'valid':valid,'per_device':per_device,'fim':fim}
+
+
+def device_information(d,r,delta,calibration=None):
+    """Per-detection Fisher information of one device; fields() weights it by Pd."""
+    u=delta/np.maximum(r[:,None],1)
+    sigma={'RADAR':24,'RF':48,'EO':12}.get(d['type'],18)
+    if calibration and calibration.get('sensor_id')==d['id']:sigma=calibration['sigma_m']
+    # Local tangent form of range + two angular measurement Jacobians.
+    # Optical/RF channels have no standalone range; only triangulation resolves depth.
+    outer=u[:,:,None]*u[:,None,:]
+    angular_sigma={'RADAR':.02,'RF':.045,'EO':.008,'IR':.012}.get(d['type'],.02)
+    if calibration and calibration.get('sensor_id')==d['id']:
+        angular_sigma*=sigma/{'RADAR':24,'RF':48,'EO':12,'IR':18}.get(d['type'],18)
+    tangent=(np.eye(3)[None]-outer)/np.maximum(r*angular_sigma,1)[:,None,None]**2
+    return tangent+(outer/(sigma*sigma) if d['type']=='RADAR' else 0)
 
 
 def summarize(f,request,points,zone):

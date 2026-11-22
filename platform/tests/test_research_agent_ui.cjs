@@ -9,10 +9,17 @@ function setup(pathname='/network/agents', search='', activeRuns=[]) {
         constructor(){ this.value=''; this.children=[]; this.disabled=false; this.hidden=false; this.textContent=''; }
         append(...children){this.children.push(...children);}
         replaceChildren(...children){this.children=children;}
+        querySelectorAll(){return this.children.filter(el=>el.dataset?.dockView);}
+        setAttribute(name,value){this[name]=value;}
         click(){}
         focus(){this.focused=true;}
     }
     const get=id=>elements[id]??=new Element();
+    for(const name of ['chat','steps','evidence','history']){
+        const button=new Element();
+        button.dataset={dockView:name};
+        get('dock-tabs').append(button);
+    }
     for(const [id,value] of Object.entries({workflow:'platform',scene:'corridor',task:'1',mode:'review',question:'检查廊道'}))get(id).value=value;
     const state={run:{id:'a'.repeat(32),status:'completed',stage:'平台诊断完成',trace:[],report:{conclusion:'缺少验算',evidence:['无记录'],evidence_ids:['ev-1'],limitations:['非现场'],next_steps:[]}}};
     const fetch=async (url,options={})=>{
@@ -24,11 +31,118 @@ function setup(pathname='/network/agents', search='', activeRuns=[]) {
         else data=state.run;
         return {ok:true,json:async()=>data};
     };
-    const context=vm.createContext({document:{getElementById:get,createElement:()=>new Element(),body:{classList:{add:name=>classes.add(name)}},addEventListener:(name,fn)=>events[name]=fn},window:{parent:{postMessage:(data,origin)=>messages.push({data,origin})}},location:{pathname,search},localStorage:{getItem:k=>saved.get(k),setItem:(k,v)=>saved.set(k,v),removeItem:k=>saved.delete(k)},fetch,console,URL,URLSearchParams,Blob,setTimeout:fn=>{timers.push(fn);return timers.length;},clearTimeout(){}});
+    const context=vm.createContext({document:{getElementById:get,querySelector:get,createElement:()=>new Element(),body:{dataset:{},classList:{add:name=>classes.add(name)}},addEventListener:(name,fn)=>events[name]=fn},window:{parent:{postMessage:(data,origin)=>messages.push({data,origin})},addEventListener:(name,fn)=>events[name]=fn},location:{pathname,search,origin:'http://127.0.0.1:8894'},localStorage:{getItem:k=>saved.get(k),setItem:(k,v)=>saved.set(k,v),removeItem:k=>saved.delete(k)},fetch,console,URL,URLSearchParams,Blob,setTimeout:fn=>{timers.push(fn);return timers.length;},clearTimeout(){}});
     vm.runInContext(fs.readFileSync(__dirname+'/../static/research-agent.js','utf8'),context);
     return {get,calls,state,context,saved,classes,events,messages};
 }
 const ready=()=>new Promise(resolve=>setImmediate(resolve));
+
+test('dock accepts only its own parent and keeps drafts and current run across workspace changes',async()=>{
+    const s=setup('/network/agents','?embed=1&layout=dock&workspace=station');
+    await ready();
+    const origin=s.context.location.origin;
+    const source=s.context.window.parent;
+    const send=(data, from=origin, sender=source)=>s.events.message({origin:from,source:sender,data});
+    const change={type:'workbench-context',workspace:'planning'};
+    send(change,'https://other.test'); send(change,origin,{});
+    assert.equal(s.get('host-context').textContent,'区域地面站');
+    send(change);
+    assert.equal(s.get('host-context').textContent,'感知网络规划');
+    const skill={type:'workbench-skill',workflow:'research',question:'检查覆盖缺测',taskId:2};
+    send(skill);
+    assert.equal(s.get('question').value,'检查廊道');
+    assert.equal(s.get('workflow').value,'platform');
+    assert.equal(s.get('skill-suggestion').hidden,false);
+    s.get('skill-dismiss').onclick();
+    assert.equal(s.get('question').value,'检查廊道');
+    send(skill);
+    s.get('skill-accept').onclick();
+    assert.equal(s.get('question').value,'检查覆盖缺测');
+    assert.equal(s.get('workflow').value,'research');
+    assert.equal(s.get('task').value,'2');
+    assert.equal(s.get('skill-suggestion').hidden,true);
+    s.get('question').value='';
+    send({...skill,question:'检查验算记录',workflow:'platform'});
+    assert.equal(s.get('question').value,'检查验算记录');
+    vm.runInContext("record={id:'kept',status:'running'}; controls(true)",s.context);
+    s.get('question').value='';
+    send(skill);
+    s.get('skill-accept').onclick();
+    assert.equal(s.get('question').value,'');
+    assert.equal(vm.runInContext('record.id',s.context),'kept');
+    assert.equal(s.calls.filter(c=>c.options.method==='POST').length,0);
+    assert.equal(s.messages[0].origin,origin);
+});
+
+test('dock views share the saved run and evidence links open its evidence view',async()=>{
+    const s=setup('/network/agents','?embed=1&layout=dock');
+    await ready();
+    const button=name=>s.get('dock-tabs').children.find(el=>el.dataset?.dockView===name);
+    button('history').onclick();
+    assert.equal(s.get('history-view').open,true);
+    assert.equal(button('history')['aria-pressed'],'true');
+    s.state.run.trace=[{tool:'scene_snapshot',step_index:0,result:{evidence_id:'ev-1'}}];
+    s.state.run.steps=[{label:'读取快照',status:'completed'}];
+    s.get('history').value=s.state.run.id;
+    s.get('history').onchange(); await ready();
+    assert.equal(button('chat')['aria-pressed'],'true');
+    button('steps').onclick();
+    const link=s.get('steps').children[0].children.find(el=>el.href);
+    link.onclick();
+    assert.equal(button('evidence')['aria-pressed'],'true');
+    assert(link.href.endsWith('#'+s.get('trace').children[0].id));
+    assert.equal(s.calls.filter(c=>c.options.method==='POST').length,0);
+});
+
+test('dock follows changed planning scenes for future analyses and leaves manual overrides and recorded inputs intact',async()=>{
+    const s=setup('/network/agents','?embed=1&layout=dock');
+    await ready();
+    const send=(workspace,scene)=>s.events.message({origin:s.context.location.origin,source:s.context.window.parent,
+        data:{type:'workbench-context',workspace,scene}});
+    send('planning','urban');
+    assert.equal(s.get('scene').value,'urban');
+    assert.match(s.get('scope-summary').textContent,/园区高密度建筑区/);
+    s.get('scene').value='electromagnetic';
+    send('planning','urban');
+    send('service','corridor');
+    send('planning','unknown');
+    assert.equal(s.get('scene').value,'electromagnetic');
+    vm.runInContext("record={status:'running',request:{scene:'urban'}}; controls(true)",s.context);
+    send('planning','corridor');
+    assert.equal(s.get('scene').value,'electromagnetic');
+    vm.runInContext('controls(false)',s.context);
+    assert.equal(s.get('scene').value,'corridor');
+    assert.match(s.get('scope-summary').textContent,/物流主干道路/);
+    assert.equal(vm.runInContext('record.request.scene',s.context),'urban');
+    assert.equal(s.get('question').value,'检查廊道');
+    assert.equal(s.calls.filter(c=>c.options.method==='POST').length,0);
+});
+
+test('an explicitly chosen Skill is removable and only the accepted platform draft sends its tool name',async()=>{
+    const s=setup('/network/agents','?embed=1&layout=dock');
+    await ready();
+    const choose=(skill='scene_snapshot')=>s.events.message({origin:s.context.location.origin,source:s.context.window.parent,
+        data:{type:'workbench-skill',workflow:'platform',question:'核对配置设备',skill}});
+    choose('invalid_tool');
+    assert.equal(s.get('question').value,'检查廊道');
+    choose(); // Existing question requires a decision before binding any tool.
+    assert.equal(vm.runInContext('selectedSkill',s.context),null);
+    s.get('skill-accept').onclick();
+    assert.match(s.get('selected-skill-name').textContent,/场景配置/);
+    s.get('clear-skill').onclick();
+    assert.equal(s.get('selected-skill').hidden,true);
+    s.get('question').value='';choose();
+    s.get('workflow').value='research';s.get('workflow').onchange();
+    assert.equal(vm.runInContext('selectedSkill',s.context),null);
+    s.get('question').value='';choose('diagnose_coverage');
+    assert.equal(s.calls.filter(c=>c.options.method==='POST').length,0);
+    await s.get('run').onclick();await ready();
+    const body=JSON.parse(s.calls.find(c=>c.options.method==='POST').options.body);
+    assert.equal(body.skill,'diagnose_coverage');
+    assert.equal(body.workflow,'platform');
+    assert.equal(s.get('selected-skill').hidden,true);
+    assert.equal(s.get('question').value,'');
+});
 
 test('platform workflow submits selected scope on mounted prefix and renders cited evidence',async()=>{
     const s=setup();await ready();await s.get('run').onclick();await ready();

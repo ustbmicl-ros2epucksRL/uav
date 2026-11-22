@@ -29,6 +29,8 @@ class RunRequest(BaseModel):
     mode: Literal['single','review'] = 'single'
     workflow: Literal['research', 'platform'] = 'research'
     scene: Literal['urban', 'corridor', 'electromagnetic'] = 'urban'
+    skill: agent_tools.ToolName | None = None
+    session_id: str | None = Field(default=None, pattern=r'^[a-f0-9]{8,32}$')
 
 
 def advance(record, key, label):
@@ -105,16 +107,23 @@ def validated_report(value, evidence):
 
 
 async def execute_platform(record):
-    advance(record, 'snapshot', '冻结场景、规划任务与历史验算')
+    advance(record, 'snapshot', '冻结场景、规划任务、历史验算与孪生实验')
     frozen = await asyncio.to_thread(agent_tools.snapshot, {'scene': record['request']['scene']})
     record['input_snapshot'] = frozen
-    advance(record, 'select', '选择平台诊断工具')
-    selection = PlatformSelection.model_validate(await model('平台诊断协调员', {
-        'question': record['request']['question'], 'scene': record['request']['scene'],
-        'tools': agent_tools.DESCRIPTIONS,
-        'instruction': '选择 1 至 4 个不同的只读工具；场景由用户指定，不可修改。'}, PlatformSelection)).model_dump()
-    if len(selection['tools']) != len(set(selection['tools'])):
-        raise ValueError('模型重复选择工具，已拒绝执行')
+    skill = record['request'].get('skill')
+    if skill:
+        advance(record, 'select', '采用所选 Skill：' + skill)
+        selection = {'purpose': '使用所选只读工具核对冻结的场景快照', 'tools': [skill]}
+    else:
+        advance(record, 'select', '选择平台诊断工具')
+        selection = PlatformSelection.model_validate(await model('平台诊断协调员', {
+            'question': record['request']['question'], 'scene': record['request']['scene'],
+            'tools': agent_tools.DESCRIPTIONS,
+            'instruction': '选择 1 至 4 个不同的只读工具；场景由用户指定，不可修改。'
+                           '问到研究内容的重要性、必要性、子项目关系或方法效果时选 twin_experiment；'
+                           '问到考核指标或是否达标时选 proposal_kpi，并配合 assessment_results。'}, PlatformSelection)).model_dump()
+        if len(selection['tools']) != len(set(selection['tools'])):
+            raise ValueError('模型重复选择工具，已拒绝执行')
     record['selection'] = selection
     evidence = []
     for name in selection['tools']:
@@ -124,6 +133,7 @@ async def execute_platform(record):
         record_evidence(record, tool=name, arguments={'scene': record['request']['scene']}, result=value)
     payload = dict(question=record['request']['question'], evidence=evidence,
                    instruction='仅依据给定证据，引用具体数值与 evidence_id。空记录要说明缺少证据；历史版本不代表当前达标。'
+                               '孪生实验是合成证据，必要性结论要写明对比对象；反事实未变差时如实说明该项未得到支持。'
                                'next_steps 仅给人工建议，不宣称已更改配置、批准任务或控制飞机。')
     advance(record, 'report', '生成带证据引用的平台建议')
     record['report'] = validated_report(await model('平台诊断分析员', payload, EvidenceReport), evidence)
@@ -260,8 +270,10 @@ async def status():
 
 @router.post('/api/research-agent/runs',status_code=202)
 async def start(request:RunRequest):
+    if request.skill is not None and request.workflow != 'platform':
+        raise HTTPException(422, '指定平台 Skill 需要选择平台诊断工作流')
     if JOBS:raise HTTPException(409,'已有研究任务运行中，请等待完成或停止该任务')
-    record={'id':uuid.uuid4().hex,'request':request.model_dump(),'status':'running','stage':'排队准备','steps':[],
+    record={'id':uuid.uuid4().hex,'request':request.model_dump(),'session_id':request.session_id,'status':'running','stage':'排队准备','steps':[],
             'evidence_status':'platform_records_and_simulation' if request.workflow == 'platform' else 'synthetic_only',
             'created_at':store.now(),'trace':[],
             'roles':['研究协调与分析']+(['证据复核'] if request.mode=='review' else [])}
@@ -296,7 +308,8 @@ def managed_runs(q: str = Query('', max_length=300),
 
 
 @router.get('/api/research-agent/runs')
-def list_runs(limit: int = Query(20, ge=1, le=100)):
+def list_runs(limit: int = Query(20, ge=1, le=100),
+              session_id: str | None = Query(None, pattern=r'^[a-f0-9]{8,32}$')):
     summaries = []
     for path in folder().glob('*.json'):
         if not re.fullmatch(r'[a-f0-9]{32}', path.stem):
@@ -305,7 +318,9 @@ def list_runs(limit: int = Query(20, ge=1, le=100)):
             record = result(path.stem)
         except (ValueError, KeyError, OSError):
             continue
-        summaries.append({key: record.get(key) for key in ('id', 'request', 'status', 'stage', 'created_at', 'model')})
+        if session_id and record.get('session_id') != session_id:
+            continue
+        summaries.append({key: record.get(key) for key in ('id', 'request', 'session_id', 'status', 'stage', 'created_at', 'model')})
     summaries.sort(key=lambda row: row.get('created_at') or '', reverse=True)
     return {'runs': summaries[:limit]}
 

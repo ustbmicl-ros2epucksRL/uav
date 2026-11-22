@@ -10,6 +10,7 @@ from .scenes import SCENES, seed, CATALOG
 from .schemas import Device, PlanRequest
 from .analysis import compute, optimize
 from .coverage_core import MODEL_VERSION
+from .proposal_kpi import CURRENT, HISTORICAL
 from .sensing import execute, track, risks, optimize_tasks, compare_common_samples
 from .route import default_points, plan_route
 
@@ -61,8 +62,13 @@ def engineering_report(scene_id:str):
             'volume':store.get(f'volume:{scene_id}'),'plan':store.get(f'engineering-plan:{scene_id}'),
             'calibration':store.get(f'calibration:{scene_id}'),'schedule':store.get(f'schedule:{scene_id}'),
             'source':'感知网络任务指标与工程验证要求',
-            'acceptance':{'heterogeneous_equipment':{'target':5,'real_integrations':0},
-                          'grid_resolution_m':{'general':10,'focus':2},'coverage':{'general':.9,'focus':.95},
+            'acceptance':{'source':CURRENT['source'],'kpi_version':CURRENT['version'],'indicators':CURRENT,
+                          'heterogeneous_equipment':{'target':CURRENT['platform_devices'],'real_integrations':0},
+                          'grid_resolution_m':{'general':CURRENT['wide_cell_m'],'focus':CURRENT['focus_cell_m']},
+                          'coverage':{'general':CURRENT['coverage'],'focus':CURRENT['focus_coverage']},
+                          'historical':{'label':HISTORICAL['label'],'decides_pass':False,
+                                        'grid_resolution_m':{'general':HISTORICAL['wide_cell_m'],'focus':HISTORICAL['focus_cell_m']},
+                                        'coverage':{'general':HISTORICAL['coverage'],'focus':HISTORICAL['focus_coverage']}},
                           'scenes':3,'task_types':5,'status':'演示基线，不构成验收证据'},
             'research_gaps':['真实设备与场景测绘数据','经标定的信号传播与多径模型','GPR 精度场与大规模 MILP/Pareto 求解',
                              'Transformer 特征融合与 IMM-UKF、跨站重识别','NTP/PTP 实际授时、真实云边端调度','外场对照与正式测试报告'],

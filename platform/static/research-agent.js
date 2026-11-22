@@ -4,19 +4,21 @@ const $ = id => document.getElementById(id);
 const activeKey = 'research-agent-active:' + root;
 const agentQuery = new URLSearchParams(location.search || '');
 const embedded = agentQuery.get('embed') === '1';
+const docked = embedded && agentQuery.get('layout') === 'dock';
 if (embedded) {
     document.body.classList.add('agent-embedded');
-    window.parent.postMessage({type:'platform-assistant-ready'}, '*');
     document.addEventListener('keydown', event => {
         if (event.key === 'Escape') {
             event.stopPropagation();
-            window.parent.postMessage({type:'platform-assistant-close'}, '*');
+            window.parent.postMessage({type:'platform-assistant-close'}, docked ? location.origin : '*');
         }
     });
 }
 const initialScene = agentQuery.get('scene');
 if (['urban','corridor','electromagnetic'].includes(initialScene)) $('scene').value = initialScene;
 let record = null, timer = null, generation = 0;
+let lastPlanningScene = null, pendingPlanningScene = null;
+let selectedSkill = null;
 const nav = {tasks:'规划任务',resources:'资源配置',diagnosis:'感知诊断',planning:'网络规划',plans:'方案管理',demonstration:'示范应用',research:'研究问题',agents:'研究智能体','agents/manage':'智能体管理'};
 for (const [key,label] of Object.entries(nav)) {
     const a = document.createElement('a');
@@ -36,13 +38,20 @@ function controls(active) {
     $('run').disabled = active; $('cancel').disabled = !active;
     $('history').disabled = active;
     for (const id of ['workflow','scene','task','mode']) $(id).disabled = active;
+    if (docked) {
+        $('skill-accept').disabled = active;
+        if (!active) applyPlanningScene();
+    }
 }
 const sceneNames = {urban:'园区高密度建筑区', corridor:'物流主干道路', electromagnetic:'园区复杂电磁区'};
 const taskNames = ['三维覆盖', '干扰与协同', '按需规划', '运行平台', '示范验证'];
 const workspaceNames = {station:'区域地面站', planning:'感知网络规划', service:'低空服务管理'};
-const toolNames = {
+const platformToolNames = {
     scene_snapshot:'场景配置', diagnose_coverage:'覆盖诊断', planning_records:'规划任务',
-    assessment_results:'历史验算', twin_experiment:'孪生实验', proposal_kpi:'申报指标',
+    assessment_results:'历史验算', twin_experiment:'孪生实验', proposal_kpi:'申报指标'
+};
+const toolNames = {
+    ...platformToolNames,
     read_research_task:'研究任务摘要', run_research_experiment:'研究算例'
 };
 const statusNames = {running:'进行中', completed:'已完成', failed:'失败', cancelled:'已停止', interrupted:'中断'};
@@ -53,6 +62,83 @@ const provenanceNames = {
 };
 const workspace = workspaceNames[agentQuery.get('workspace')];
 $('host-context').textContent = workspace || '研究助手';
+
+function showDockView(name) {
+    document.body.dataset.dockView = name;
+    for (const button of $('dock-tabs').querySelectorAll('[data-dock-view]')) {
+        button.setAttribute('aria-pressed', String(button.dataset.dockView === name));
+    }
+    if (name === 'history') $('history-view').open = true;
+    document.querySelector('.assistant-content').scrollTop = 0;
+}
+
+function applyPlanningScene() {
+    if (!pendingPlanningScene || $('run').disabled) return;
+    $('scene').value = pendingPlanningScene;
+    pendingPlanningScene = null;
+    $('workflow').onchange();
+}
+
+function selectSkill(name) {
+    selectedSkill = name || null;
+    $('selected-skill').hidden = !selectedSkill;
+    $('selected-skill-name').textContent = selectedSkill ? 'Skill · ' + platformToolNames[selectedSkill] : '';
+}
+
+if (docked) {
+    document.body.classList.add('agent-dock');
+    const tabs = $('dock-tabs');
+    tabs.hidden = false;
+    tabs.append($('stage'));
+    for (const button of tabs.querySelectorAll('[data-dock-view]')) {
+        button.onclick = () => showDockView(button.dataset.dockView);
+    }
+    showDockView('chat');
+
+    let pendingSkill = null;
+    function dismissSkill() {
+        pendingSkill = null;
+        $('skill-suggestion').hidden = true;
+    }
+    function applySkill() {
+        if (!pendingSkill || $('run').disabled) return;
+        $('workflow').value = pendingSkill.workflow;
+        if (pendingSkill.workflow === 'research' && pendingSkill.taskId) {
+            $('task').value = String(pendingSkill.taskId);
+        }
+        $('workflow').onchange();
+        selectSkill(pendingSkill.skill);
+        $('question').value = pendingSkill.question;
+        dismissSkill();
+        showDockView('chat');
+        $('question').focus();
+    }
+    $('skill-accept').onclick = applySkill;
+    $('skill-dismiss').onclick = dismissSkill;
+    $('clear-skill').onclick = () => { selectSkill(null); $('question').focus(); };
+    window.addEventListener('message', event => {
+        if (event.origin !== location.origin || event.source !== window.parent || !event.data) return;
+        const {type, workspace, scene, workflow, question, taskId, skill} = event.data;
+        if (type === 'workbench-context' && typeof workspace === 'string' && Object.hasOwn(workspaceNames, workspace)) {
+            $('host-context').textContent = workspaceNames[workspace];
+            if (workspace === 'planning' && typeof scene === 'string' && Object.hasOwn(sceneNames, scene) && scene !== lastPlanningScene) {
+                lastPlanningScene = pendingPlanningScene = scene;
+                applyPlanningScene();
+            }
+        }
+        if (type !== 'workbench-skill' || !['platform','research'].includes(workflow) ||
+            typeof question !== 'string' || question.trim().length < 2 || question.length > 3000 ||
+            (taskId !== undefined && (!Number.isInteger(taskId) || taskId < 1 || taskId > 5)) ||
+            (skill !== undefined && (workflow !== 'platform' || typeof skill !== 'string' || !Object.hasOwn(platformToolNames, skill)))) return;
+        pendingSkill = {workflow, question:question.trim(), taskId, skill};
+        if ($('run').disabled || $('question').value.trim()) {
+            $('skill-preview').textContent = '所选 Skill 的问题：' + pendingSkill.question;
+            $('skill-suggestion').hidden = false;
+        } else {
+            applySkill();
+        }
+    });
+}
 
 function node(tag, value) {
     const element = document.createElement(tag);
@@ -74,6 +160,7 @@ function localTime(value) {
 function evidenceLink(data, index, label) {
     const link = node('a', label);
     link.href = location.pathname + (location.search || '') + '#trace-' + data.id + '-' + index;
+    if (docked) link.onclick = () => showDockView('evidence');
     return link;
 }
 
@@ -234,6 +321,7 @@ async function poll(id, version) {
 }
 $('workflow').onchange = () => {
     const platform = $('workflow').value === 'platform';
+    if (docked && !platform) selectSkill(null);
     $('scene-label').hidden = !platform; $('task-label').hidden = platform;
     $('scope-summary').textContent = scopeOf({workflow:$('workflow').value, scene:$('scene').value, task_id:$('task').value})
         + ($('mode').value === 'review' ? ' · 含复核' : '');
@@ -249,9 +337,15 @@ $('run').onclick = async () => {
     clearTimeout(timer); const version = ++generation;
     controls(true); $('cancel').disabled = true; $('stage').textContent = '提交智能体任务…';
     try {
-        const data = await api('runs', {question, task_id:Number($('task').value),
-            mode:$('mode').value, workflow:$('workflow').value, scene:$('scene').value});
+        const request = {question, task_id:Number($('task').value),
+            mode:$('mode').value, workflow:$('workflow').value, scene:$('scene').value};
+        if (docked && selectedSkill && request.workflow === 'platform') request.skill = selectedSkill;
+        const data = await api('runs', request);
         if (version !== generation) return;
+        if (docked) {
+            if ($('question').value.trim() === question) $('question').value = '';
+            selectSkill(null);
+        }
         localStorage.setItem(activeKey,data.id); render(data); poll(data.id,version);
     } catch (error) { $('stage').textContent = error.message; controls(false); }
 };
@@ -264,6 +358,7 @@ $('cancel').onclick = async () => {
 $('history-refresh').onclick = () => refreshHistory().catch(error => { $('history-status').textContent = error.message; });
 $('history').onchange = () => {
     if (!$('history').value || $('history').disabled) return;
+    if (docked) showDockView('chat');
     clearTimeout(timer); const version = ++generation;
     controls(true); $('cancel').disabled = true;
     poll($('history').value,version);
@@ -283,6 +378,7 @@ $('memory-rank').onclick = async () => {
     } catch (error) { $('memory-stage').textContent = error.message; }
     finally { button.disabled = false; }
 };
+if (embedded) window.parent.postMessage({type:'platform-assistant-ready'}, docked ? location.origin : '*');
 (async () => {
     const requestedRun = agentQuery.get('run');
     const requestedWorkflow = agentQuery.get('workflow');

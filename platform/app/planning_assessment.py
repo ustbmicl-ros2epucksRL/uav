@@ -10,6 +10,7 @@ import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from . import coverage_core as core
+from .proposal_kpi import CURRENT, VERSION as KPI_VERSION, simulation_checks
 
 
 class AssessmentRequest(BaseModel):
@@ -377,19 +378,17 @@ def calculate(snapshot):
     full_bounds = request.bounds == [0, scene['width'], 0, scene['height'], 30, scene['altitude_max']]
     full_focus = all(task['focus'][key] >= request.bounds[i] and task['focus'][other] <= request.bounds[i + 1]
                      for key, other, i in [('x0', 'x1', 0), ('y0', 'y1', 2)]) and task['focus']['z1'] <= request.bounds[5] and max(30, task['focus']['z0']) >= request.bounds[4]
-    coverage_pass = stats['coverage'] is not None and stats['coverage'] >= .9
-    focus_pass = stats['focus_coverage'] is not None and stats['focus_coverage'] >= .95
-    resolution_pass = request.wide_cell <= 10 and request.focus_cell <= 2
     modalities = sorted({d['type'] for d in scene['devices'] + plan['selected'] if d['status'] == 'online' and d['type'] != 'ADSB' and (d['type'] != 'RF' or task['volume']['target_emitting'])})
+    kpi = simulation_checks(stats, request.wide_cell, request.focus_cell, len(modalities))
     feasible = all(stats[key] is not None and stats[key] + 1e-12 >= task[target] for key, target in
                    [('coverage', 'coverage_target'), ('focus_coverage', 'focus_target'), ('precision_pass_rate', 'precision_rate_target')])
     low_rate = calculation['after']['bottleneck']['altitude'][0]['precise']
     low_pass = request.low_altitude_target is None or (low_rate is not None and low_rate >= request.low_altitude_target)
     feasible = feasible and low_pass and plan['added_cost'] <= task['budget'] + 1e-9
     return dict(low_altitude=dict(bounds=[30, 100], target=request.low_altitude_target, rate=low_rate, passed=low_pass if request.low_altitude_target is not None else None), **plan, **calculation, stats=stats, scene=scene, settings=request.model_dump(),
-                feasible=feasible, simulation_kpi_pass=full_bounds and full_focus and resolution_pass and coverage_pass and focus_pass and len(modalities) >= 3,
-                checks=dict(full_domain=full_bounds, full_focus=full_focus, resolution=resolution_pass,
-                            coverage_90=coverage_pass, focus_95=focus_pass, modalities_3=len(modalities) >= 3),
+                feasible=feasible, simulation_kpi_pass=full_bounds and full_focus and kpi['resolution'] and kpi['coverage'] and kpi['focus_coverage'] and kpi['modalities_3'],
+                kpi_version=KPI_VERSION, proposal_standard=dict(current=CURRENT, historical_decides_pass=False),
+                checks=dict(full_domain=full_bounds, full_focus=full_focus, **kpi),
                 modalities=modalities, evidence_type='synthetic_model', input_digest=digest(snapshot),
                 model_version=core.MODEL_VERSION, precision_threshold_m=task['volume']['precision_m'],
                 scope='感知网络典型规划仿真数值验证；现场接入、科学模型和示范成果需相应证据',

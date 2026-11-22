@@ -17,6 +17,7 @@ from .jobs_api import router as jobs_router
 from .cabinet_demo import router as cabinet_router
 from .learning import router as learning_router
 from .acceptance_api import router as acceptance_router
+from .twin_api import router as twin_router
 from .jobs import manager
 from .observability import install_observability
 
@@ -35,7 +36,7 @@ app = FastAPI(title="多模态感知网络智能规划平台", lifespan=lifespan
 app.mount('/static', StaticFiles(directory=store.ROOT / 'static'), name='static')
 for router in (core_router, engineering_router, tiles_router, planning_portal_router,
                demonstration_router, research_analysis_router, research_agent_router,
-               baseline_comparison_router, jobs_router, learning_router, cabinet_router, acceptance_router):
+               baseline_comparison_router, jobs_router, learning_router, cabinet_router, acceptance_router, twin_router):
     app.include_router(router)
 install_observability(app)
 

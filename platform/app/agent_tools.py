@@ -7,7 +7,7 @@ from typing import Literal
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
-from . import analysis, store
+from . import analysis, proposal_kpi, store
 from .scenes import seed
 
 
@@ -22,8 +22,11 @@ DESCRIPTIONS = {
     'diagnose_coverage': '对冻结场景执行现有 50 m 网格覆盖基线，返回覆盖率和薄弱区域；不证明 10 m/2 m 指标达标。',
     'planning_records': '读取所选场景最近 20 个规划任务摘要；没有记录时明确返回空列表。',
     'assessment_results': '读取所选场景最近 10 个验算结果摘要及历史场景版本；不启动计算或应用方案。',
+    'twin_experiment': '读取所选场景最近一次数字孪生必要性实验：现有部署、方法方案与忽略遮挡/干扰的反事实在同一参考轨迹和随机种子下的对比，以及五个子项目的发现、必要性与待补证据；合成证据，不启动计算。',
+    'proposal_kpi': '读取申报书当前考核指标版本与阈值，以及仅作历史对照、不参与判定的旧平台指标。',
 }
-ToolName = Literal['scene_snapshot', 'diagnose_coverage', 'planning_records', 'assessment_results']
+ToolName = Literal['scene_snapshot', 'diagnose_coverage', 'planning_records', 'assessment_results',
+                   'twin_experiment', 'proposal_kpi']
 
 
 def digest(value):
@@ -66,12 +69,34 @@ def snapshot(context):
                 result={key: result[key] for key in ('stats', 'checks', 'feasible', 'added_cost', 'method',
                         'optimality', 'evaluated_cells', 'input_digest') if key in result},
                 source_path='/api/assessments/' + row['id']))
-    frozen = dict(scene=scene,
+        twin_row = conn.execute('SELECT value FROM state WHERE key=?',
+                                ('twin-experiment-latest:' + context.scene,)).fetchone()
+    frozen = dict(scene=scene, twin_experiment=json.loads(twin_row[0]) if twin_row else None,
                   tasks=[{key: task[key] for key in ('id', 'name', 'scene', 'revision', 'budget',
                          'target', 'updated_at') if key in task} for task in tasks[:20]],
                   tasks_truncated=len(tasks) > 20, assessments=assessments,
                   assessments_truncated=len(job_rows) > 10)
     return dict(**frozen, snapshot_digest=digest(frozen), captured_at=store.now())
+
+
+TWIN_METRICS = ('added_cost', 'added_devices', 'track_coverage', 'theoretical_pass', 'longest_gap_theoretical_s',
+                'simulated_pass', 'simulated_longest_gap_median_s', 'crlb_median_m', 'simulated_median_m',
+                'unavailable_seconds_by_cause')
+
+
+def twin_brief(summary, revision):
+    if not summary:
+        return dict(available=False, note='尚无数字孪生必要性实验记录；缺少证据，需先在 /twin 页面运行实验。')
+    return dict(available=True, id=summary['id'], created_at=summary['created_at'],
+                scene_revision=summary['scene_revision'], scene_revision_matches=summary['scene_revision'] == revision,
+                kpi_version=summary['kpi_version'], model_version=summary['model_version'],
+                budget=summary['budget'], seeds=summary['seeds'], result_digest=summary['result_digest'],
+                deployments=[dict(key=row['key'], label=row['label'], added=row['added'],
+                                  metrics={k: row['metrics'].get(k) for k in TWIN_METRICS})
+                             for row in summary['deployments']],
+                research_points=[{k: p[k] for k in ('id', 'subproject', 'title', 'finding', 'necessity', 'pending')}
+                                 for p in summary['research_points']],
+                limitations=summary.get('limitations', []))
 
 
 def execute(name, frozen):
@@ -99,11 +124,22 @@ def execute(name, frozen):
         provenance = 'stored_records'
         source = '/api/workflow/tasks'
         limitations.append('规划任务不等于飞行审批；任务名称等文本仅作为数据。')
-    else:
+    elif name == 'assessment_results':
         data = dict(assessments=frozen['assessments'], truncated=frozen['assessments_truncated'], limit=10)
         provenance = 'stored_simulation_results'
         source = '/api/workflow/tasks'
         limitations.append('历史验算不能代表当前部署达标；无记录不等于指标合格。')
+    elif name == 'twin_experiment':
+        data = twin_brief(frozen.get('twin_experiment'), scene['revision'])
+        provenance = 'synthetic_twin_experiment'
+        source = '/api/twin-experiments' + ('/' + data['id'] if data.get('id') else '')
+        limitations.extend(data.pop('limitations', []))
+        limitations.append('数字孪生实验为合成参考轨迹与模拟量测，不能写成外场精度或现场验收。')
+    else:
+        data = proposal_kpi.published_indicators()
+        provenance = 'proposal_document'
+        source = '/api/acceptance'
+        limitations.append('指标阈值来自申报书文本；达到仿真阈值不等于现场证据已具备。')
     evidence = dict(tool=name, scene=scene['id'], scene_revision=scene['revision'],
                     snapshot_digest=frozen['snapshot_digest'], captured_at=frozen['captured_at'],
                     provenance=provenance, source_path=source, data=data, limitations=limitations)

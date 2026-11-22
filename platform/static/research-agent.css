@@ -67,7 +67,7 @@ body {
 .run-steps .step-running span { color: #146476; font-weight: 600; }
 .run-steps .step-failed span, .run-steps .step-interrupted span { color: #9e4d22; }
 #purpose { font-size: 13px; }
-.run-panel > h2, #review-card, .evidence-section { margin-top: 20px; }
+#chat-view, #review-card, .evidence-section { margin-top: 20px; }
 .report-body { margin-top: 8px; line-height: 1.65; }
 .report-body pre {
     margin: 0;
@@ -121,4 +121,125 @@ body {
 @media (max-height: 380px) {
     .agent-embedded .assistant-workspace { height: auto; }
     .agent-embedded .assistant-content { overflow: visible; }
+}
+
+.agent-dock { background: #fff; }
+.agent-dock .assistant-workspace {
+    max-width: none;
+    width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+}
+.agent-dock #dock-tabs {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex: none;
+    padding: 0 14px;
+    border-bottom: 1px solid #dce5e9;
+    background: #f7f9fa;
+}
+.dock-view-switch { display: flex; flex: none; }
+.dock-view-switch button {
+    padding: 6px 9px;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    color: #566d77;
+    background: transparent;
+    font-size: 13px;
+}
+.dock-view-switch button[aria-pressed="true"] {
+    border-bottom-color: #137788;
+    color: #125d6b;
+    font-weight: 650;
+}
+.agent-dock #stage { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-dock .assistant-content { padding: 6px 16px; overflow: auto; }
+.agent-dock .scope-panel, .agent-dock .run-panel {
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    border: 0;
+}
+.agent-dock .scope-panel {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0 16px;
+}
+.agent-dock .scope-heading { margin-bottom: 0; }
+.agent-dock .scope-heading h2 { font-size: 14px; }
+.agent-dock .scope-controls { flex: 1 1 220px; }
+.agent-dock .scope-panel details { padding: 3px 0; border: 0; }
+.agent-dock .scope-controls summary { font-size: 13px; }
+.agent-dock #chat-view, .agent-dock .evidence-section { margin: 0; }
+.agent-dock .report-body { margin-top: 4px; }
+.agent-dock .user-message:not(:empty) { margin: 6px 0 8px auto; }
+.agent-dock .run-steps { margin: 0; }
+.agent-dock .run-steps:empty::after { content: '尚无已记录步骤。'; color: #637b8d; }
+.agent-dock #history-view { width: 100%; }
+.agent-dock #history-view > summary, .agent-dock #chat-view > h2,
+.agent-dock #steps-view h2, .agent-dock .evidence-section h2 { display: none; }
+.agent-dock .evidence-section .run-heading { justify-content: flex-end; }
+.agent-dock .evidence-section button { padding: 3px 8px; font-size: 12px; }
+.agent-dock:not([data-dock-view="chat"]) :is(#chat-view, #run-context, .scope-heading, .scope-controls),
+.agent-dock:not([data-dock-view="steps"]) #steps-view,
+.agent-dock:not([data-dock-view="evidence"]) #evidence-view,
+.agent-dock:not([data-dock-view="history"]) #history-view,
+.agent-dock[data-dock-view="history"] .run-panel { display: none; }
+.agent-dock .composer {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 5px 8px;
+    padding: 7px 14px;
+}
+.agent-dock .composer label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+}
+.agent-dock .composer textarea {
+    margin: 0;
+    padding: 8px 10px;
+    min-height: 38px;
+    height: 38px;
+    max-height: 24vh;
+    resize: none;
+}
+.agent-dock .composer button { padding: 7px 10px; white-space: nowrap; }
+.agent-dock #cancel:disabled { display: none; }
+#selected-skill:not([hidden]) {
+    grid-column: 1 / -1;
+    justify-self: start;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border-radius: 4px;
+    padding-left: 7px;
+    color: #14586a;
+    background: #e9f3f4;
+    font-size: 12px;
+}
+.agent-dock #clear-skill { padding: 1px 6px; color: inherit; background: none; border: 0; font-size: 16px; }
+#skill-suggestion:not([hidden]) {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #405c66;
+    font-size: 13px;
+}
+.agent-dock #skill-preview { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-dock #skill-suggestion button { padding: 3px 7px; font-size: 12px; }
+@media (max-width: 620px) {
+    .agent-dock #dock-tabs { flex-wrap: wrap; gap: 0 8px; padding: 0 7px; }
+    .agent-dock #stage { font-size: 12px; max-width: 100%; }
+    .agent-dock .assistant-content { padding: 4px 10px; }
+    .agent-dock .composer { padding: 5px 8px; }
 }

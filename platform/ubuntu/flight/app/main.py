@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager, AsyncExitStack
 from fastapi.staticfiles import StaticFiles
 from typing import Literal
 from . import mavlink_link, station, route_plan
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 from . import follow, sim, business
@@ -68,7 +68,7 @@ app.mount('/static',StaticFiles(directory=ROOT/'static'),name='static')
 @app.middleware("http")
 async def revalidate_pages(request, call_next):
     response = await call_next(request)
-    if request.url.path == "/":
+    if request.url.path in ("/", "/station"):
         response.headers["Cache-Control"] = "no-store"
     elif request.url.path.startswith("/static/"):
         response.headers["Cache-Control"] = "no-cache"
@@ -147,9 +147,19 @@ def health():
     return {"service": "flight-control", "os": host_os(), "vehicles": len(sim.VEHICLES)}
 
 
-@app.get("/")
-def index(view: str = "fly"):
+@app.get("/station")
+def station_page():
     return FileResponse(ROOT / "static" / "index.html")
+
+
+@app.get("/")
+def index(request: Request):
+    # Existing map embeds and deep links open the original station view.
+    station_params = {"view", "embed", "source", "record", "task", "report", "transfer",
+                      "dual", "assessment", "round", "step", "autoplay", "result"}
+    if station_params.intersection(request.query_params) or request.headers.get("sec-fetch-dest") == "iframe":
+        return station_page()
+    return FileResponse(ROOT / "static" / "unified-workspace.html")
 
 
 @app.post("/api/reset")

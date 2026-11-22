@@ -20,7 +20,7 @@ def client(tmp_path, monkeypatch):
 
 def test_catalog_scope_and_unknown_commands(client):
     catalog = client.get('/api/research-agent/tools').json()
-    assert len(catalog['tools']) == 4
+    assert len(catalog['tools']) == 6
     assert all(t['effects'] == 'read_only' for t in catalog['tools'])
     for path in ('arm', 'apply_plan'):
         assert client.post('/api/research-agent/tools/' + path, json={'scene': 'urban'}).status_code == 422
@@ -95,10 +95,35 @@ def test_platform_workflow_persists_citations_and_snapshot(client, monkeypatch, 
         assert step['key'] == 'tool:' + item['tool']
         assert step['status'] == 'completed' and step['finished_at'] >= step['started_at']
     assert any('不是实时心跳' in note for note in saved['report']['source_limitations'])
-    keys = [step['key'] for step in saved['steps']]
-    assert keys == ['snapshot', 'select', 'tool:scene_snapshot', 'tool:assessment_results', 'report'] + (['review'] if mode == 'review' else [])
     assert len(calls) == (3 if mode == 'review' else 2)
     assert store.get('scene:urban') is None
+    keys = [step['key'] for step in saved['steps']]
+    assert keys == ['snapshot', 'select', 'tool:scene_snapshot', 'tool:assessment_results', 'report'] + (['review'] if mode == 'review' else [])
+    assert all(step['status'] == 'completed' and step['finished_at'] >= step['started_at'] for step in saved['steps'])
+
+
+def test_twin_and_kpi_tools_report_missing_evidence_then_latest_summary(client):
+    from app import proposal_kpi, twin_experiment as twin
+    empty = tools.execute('twin_experiment', tools.snapshot({'scene': 'urban'}))
+    assert empty['data']['available'] is False and '缺少证据' in empty['data']['note']
+    record = dict(id='b' * 32, created_at='2026-11-20', **twin.run(seed('urban'), twin.TwinRequest(seed_count=4)))
+    store.put('twin-experiment-latest:urban', twin.summary(record))
+    evidence = tools.execute('twin_experiment', tools.snapshot({'scene': 'urban'}))
+    data = evidence['data']
+    assert evidence['provenance'] == 'synthetic_twin_experiment' and data['scene_revision_matches']
+    assert [p['id'] for p in data['research_points']] == [1, 2, 3, 4, 5]
+    assert {row['key'] for row in data['deployments']} == {'baseline', 'method', 'ignore_occlusion', 'ignore_interference'}
+    assert any('外场' in note for note in evidence['limitations'])
+    kpi = tools.execute('proposal_kpi', tools.snapshot({'scene': 'urban'}))['data']
+    assert kpi['current'] == proposal_kpi.CURRENT and kpi['historical']['decides_pass'] is False
+
+
+def test_runs_are_grouped_by_session(client):
+    for run_id, session in (('1' * 32, 'abcd1234'), ('2' * 32, 'ffff0000')):
+        agent.save(dict(id=run_id, status='completed', created_at='2026-11-20', session_id=session, request={'question': '测试'}))
+    rows = client.get('/api/research-agent/runs?session_id=abcd1234').json()['runs']
+    assert [row['id'] for row in rows] == ['1' * 32]
+    assert client.get('/api/research-agent/runs?session_id=NOT-HEX').status_code == 422
 
 
 @pytest.mark.parametrize('fault', ['unknown_tool', 'duplicate', 'invented_evidence'])
@@ -112,6 +137,7 @@ def test_model_instructions_cannot_expand_tools_or_forge_citations(client, monke
     asyncio.run(agent.execute(record))
     assert record['status'] == 'failed' and 'report' not in record
     assert len(record['trace']) == (1 if fault == 'invented_evidence' else 0)
+    assert record['steps'][-1]['status'] == 'failed' and record['steps'][-1]['finished_at']
 
 
 def test_history_retains_interrupted_runs_and_mounted_routes(client):
@@ -143,3 +169,42 @@ def test_framework_client_preserves_evidence_and_rejects_external_hosts():
         with pytest.raises(ValueError): module.PlatformTools(url)
     with pytest.raises(ValueError): client.call('arm')
     assert len(seen) == 1
+
+
+def test_workspace_skill_executes_selected_tool_and_checks_its_evidence(client, monkeypatch):
+    payload = dict(question='核对当前设备配置', workflow='platform', scene='corridor', skill='scene_snapshot')
+    assert client.post('/api/research-agent/runs', json={**payload, 'skill': 'unknown'}).status_code == 422
+    assert client.post('/api/research-agent/runs', json={**payload, 'workflow': 'research'}).status_code == 422
+
+    async def model(role, context, schema):
+        assert schema is agent.EvidenceReport
+        item, = context['evidence']
+        return dict(conclusion='已核对', evidence=['配置快照'], limitations=['配置记录'],
+                    evidence_ids=[item['evidence_id']], next_steps=[])
+
+    monkeypatch.setattr(agent, 'model', model)
+    record = dict(id='b'*32, request=agent.RunRequest(**payload).model_dump(), status='running', trace=[])
+    asyncio.run(agent.execute(record))
+    assert record['status'] == 'completed'
+    assert record['selection']['tools'] == ['scene_snapshot']
+    evidence, = record['trace']
+    assert evidence['arguments'] == {'scene': 'corridor'}
+    assert record['report']['evidence_ids'] == [evidence['result']['evidence_id']]
+
+
+def test_workspace_skill_evidence_sources_are_mounted(tmp_path, monkeypatch):
+    from app.main import app as planning_app
+
+    monkeypatch.setattr(store, 'DATA', tmp_path)
+    store.init()
+    host = FastAPI()
+    host.mount('/network', planning_app)
+    with TestClient(host) as client:
+        for name in tools.DESCRIPTIONS:
+            response = client.post('/network/api/research-agent/tools/' + name, json={'scene': 'urban'})
+            assert response.status_code == 200
+            evidence = response.json()
+            source = client.get('/network' + evidence['source_path'])
+            assert source.status_code == 200, (name, evidence['source_path'])
+            if name == 'proposal_kpi':
+                assert source.json() == evidence['data']

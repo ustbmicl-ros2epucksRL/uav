@@ -6,8 +6,8 @@
     <title>低空研究智能体</title>
     <link rel="icon" href="data:,">
     <link rel="stylesheet" href="static/portal.css">
-    <link rel="stylesheet" href="static/research-agent.css?v=20261121">
-    <script src="static/research-agent.js?v=20261121-manage" defer></script>
+    <link rel="stylesheet" href="static/research-agent.css?v=20261122-dock">
+    <script src="static/research-agent.js?v=20261122-dock" defer></script>
 </head>
 <body>
 <header>
@@ -16,6 +16,14 @@
 </header>
 <nav id="navigation" aria-label="规划功能"></nav>
 <main class="assistant-workspace">
+    <div id="dock-tabs" hidden>
+        <div role="group" aria-label="Chat 视图" class="dock-view-switch">
+            <button type="button" data-dock-view="chat" aria-controls="chat-view" aria-pressed="true">对话</button>
+            <button type="button" data-dock-view="steps" aria-controls="steps-view" aria-pressed="false">执行步骤</button>
+            <button type="button" data-dock-view="evidence" aria-controls="evidence-view" aria-pressed="false">执行证据</button>
+            <button type="button" data-dock-view="history" aria-controls="history-view" aria-pressed="false">历史记录</button>
+        </div>
+    </div>
     <div class="assistant-content">
         <section class="scope-panel" aria-label="分析上下文">
             <div class="scope-heading">
@@ -57,7 +65,7 @@
                 <p id="model-status" class="muted" role="status">检查本机模型…</p>
                 <details><summary>可用平台工具</summary><p id="tool-catalog">读取可用工具…</p></details>
             </details>
-            <details class="history-panel">
+            <details id="history-view" class="history-panel">
                 <summary>历史记录</summary>
                 <div class="history-controls">
                     <select id="history" aria-label="历史智能体任务"><option value="">选择历史记录</option></select>
@@ -69,16 +77,20 @@
 
         <section class="run-panel" aria-label="分析记录">
             <p id="run-context" class="user-message"></p>
-            <div class="run-heading"><h2>执行步骤</h2><p id="stage" role="status">等待提问</p></div>
-            <ol id="steps" class="run-steps"></ol>
-            <p id="purpose" class="muted"></p>
-            <h2>分析结果</h2>
-            <div id="answer" class="report-body">在下方输入问题，或打开历史记录查看已有分析。</div>
-            <section id="review-card" hidden>
-                <h2>证据复核</h2>
-                <div id="review" class="report-body"></div>
+            <section id="steps-view">
+                <div class="run-heading"><h2>执行步骤</h2><p id="stage" role="status">等待提问</p></div>
+                <ol id="steps" class="run-steps"></ol>
+                <p id="purpose" class="muted"></p>
             </section>
-            <section class="evidence-section">
+            <section id="chat-view">
+                <h2>分析结果</h2>
+                <div id="answer" class="report-body">在下方输入问题，或打开历史记录查看已有分析。</div>
+                <section id="review-card" hidden>
+                    <h2>证据复核</h2>
+                    <div id="review" class="report-body"></div>
+                </section>
+            </section>
+            <section id="evidence-view" class="evidence-section">
                 <div class="run-heading"><h2>执行证据</h2>
                     <button type="button" id="export" class="secondary" disabled>导出记录</button>
                 </div>
@@ -99,6 +111,15 @@
     </div>
 
     <section class="composer" aria-label="提交新问题">
+        <div id="selected-skill" hidden>
+            <span id="selected-skill-name"></span>
+            <button id="clear-skill" type="button" aria-label="移除已选 Skill">×</button>
+        </div>
+        <div id="skill-suggestion" hidden>
+            <span id="skill-preview" role="status"></span>
+            <button id="skill-accept" type="button" class="secondary">采用问题</button>
+            <button id="skill-dismiss" type="button" class="secondary">保留草稿</button>
+        </div>
         <label for="question">新问题</label>
         <textarea id="question" rows="2" maxlength="3000" placeholder="例如：这个场景有哪些已保存的规划验算？"></textarea>
         <div class="composer-actions">

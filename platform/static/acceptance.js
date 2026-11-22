@@ -5,7 +5,7 @@ const escapeHtml = value => String(value ?? '').replace(/申请书|申报书/g, 
 const percent = value => value == null ? '无有效样本' : (value * 100).toFixed(2) + '%';
 const difference = (before, after) => before == null || after == null ? '无有效样本' : ((after-before)*100).toFixed(3);
 const statuses = {queued:'排队中', running:'计算中', succeeded:'已完成', failed:'失败', cancelled:'已取消', interrupted:'已中断'};
-const labels = {simulation_pass:'本次仿真通过', simulation_fail:'本次仿真未通过', pending_evidence:'待补验收证据'};
+const labels = {simulation_pass:'仿真数值达标', simulation_fail:'仿真数值未达标', function_verified:'功能已验证（软件）', pending_evidence:'现场证据待补', historical_met:'历史对照已达到', historical_unmet:'历史对照未达到'};
 let tasks = [], task = null, current = null, viewer = null, flightViewer = null, timer = null, busy = false, sequence = 0;
 let assessmentHistory = [];
 const query = new URLSearchParams(location.search);
@@ -139,7 +139,7 @@ function renderValidationProgress(job) {
             const counts = report.counts;
             const items = values => values.map(value => `<li>${escapeHtml(value)}</li>`).join('');
             return `<article class="research-item"><h3>${escapeHtml(report.name)}</h3>
-                <p>${report.stale ? '历史版本，需重新验证' : '当前模型计算'} · 仿真通过 ${counts.simulation_pass} 项 · 未通过 ${counts.simulation_fail} 项 · 待补证据 ${counts.pending_evidence} 项</p>
+                <p>${report.stale ? '历史版本，需重新验证' : '当前模型计算'} · 仿真数值达标 ${counts.simulation_pass} 项 · 未通过 ${counts.simulation_fail} 项 · 功能已验证 ${counts.function_verified || 0} 项 · 现场证据待补 ${counts.pending_evidence} 项</p>
                 <h4>测试方法</h4><p>${escapeHtml(report.method)}</p>
                 <h4>本次结果</h4><ul>${items(report.results)}</ul>
                 ${report.failed_requirements.length ? `<h4>指标缺口</h4><ul>${items(report.failed_requirements)}</ul>` : ''}
@@ -161,7 +161,8 @@ function renderValidationProgress(job) {
         const passed = rows.filter(row => row.status === 'simulation_pass').length;
         const failed = rows.filter(row => row.status === 'simulation_fail').length;
         const pending = rows.filter(row => row.status === 'pending_evidence').length;
-        const status = rows.length ? `仿真通过 ${passed} 项 · 未通过 ${failed} 项 · 待补证据 ${pending} 项` : '本记录尚无对应指标';
+        const functional = rows.filter(row => row.status === 'function_verified').length;
+        const status = rows.length ? `仿真数值达标 ${passed} 项 · 未通过 ${failed} 项 · 功能已验证 ${functional} 项 · 现场证据待补 ${pending} 项` : '本记录尚无对应指标';
         return `<article class="research-item"><h3>${name}</h3><p>${purpose}</p><p>${status}${job.stale ? ' · 历史输入，需重新验证' : ''}</p><p>${next}</p><a href="${root}/research/${index + 1}?task=${encodeURIComponent(task.id)}&assessment=${encodeURIComponent(job.id)}">查看测试方法与计算证据 →</a></article>`;
     }).join('');
 }
@@ -185,7 +186,8 @@ function renderResult(job) {
     ];
     $('research-links').innerHTML = topics.map(([question, value], index) => `<article class="research-item"><a href="${root}/research/${index + 1}?task=${task.id}&assessment=${job.id}">${question}</a><p>${escapeHtml(value)}</p></article>`).join('');
     renderValidationProgress(job);
-    $('indicators').innerHTML = table(['指标','任务要求','本次结果或证据','判定','依据'], job.indicators.map(row => [escapeHtml(row.id), escapeHtml(row.requirement), typeof row.value === 'number' ? percent(row.value) : escapeHtml(row.value), `<span class="${row.status === 'simulation_pass' ? 'pass' : row.status === 'simulation_fail' ? 'fail' : 'pending'}">${labels[row.status]}</span>`, row.id.startsWith('task-') ? `<a href="${root}/tasks?task=${encodeURIComponent(task.id)}">本次任务配置</a>` : `<a href="${root}/api/research-analysis/proposal#page=${row.pdf_page}" target="_blank" rel="noopener">指标依据第 ${row.pdf_page} 页</a>`]));
+    const indicatorClass = status => status === 'simulation_pass' || status === 'function_verified' ? 'pass' : status === 'simulation_fail' ? 'fail' : status.startsWith('historical_') ? 'historical' : 'pending';
+    $('indicators').innerHTML = `<p class="muted">指标版本 ${escapeHtml(result.kpi_version || '旧版本，需重新计算')}</p>` + table(['指标','任务要求','本次结果或证据','判定','依据'], job.indicators.map(row => [escapeHtml(row.id), escapeHtml(row.requirement), typeof row.value === 'number' ? percent(row.value) : escapeHtml(row.value), `<span class="${indicatorClass(row.status)}">${labels[row.status]}</span>`, row.id.startsWith('task-') ? `<a href="${root}/tasks?task=${encodeURIComponent(task.id)}">本次任务配置</a>` : `<a href="${root}/api/research-analysis/proposal#page=${row.pdf_page}" target="_blank" rel="noopener">指标依据第 ${row.pdf_page} 页</a>`]));
     $('deployment').innerHTML = table(['新增设备','型号','站址','挂高 / m','朝向 / °','俯仰 / °','费用 / 万元'], result.selected.map(device => [escapeHtml(device.id), escapeHtml(device.model_id || device.type), escapeHtml(device.site_id), device.z, device.azimuth, device.pitch, device.cost]));
     $('publish').disabled = job.stale || !!job.evidence.plan_id;
     $('plan-link').hidden = !job.evidence.plan_id;
@@ -335,6 +337,6 @@ async function initialize() {
     $('task-select').innerHTML = tasks.map(item => `<option value="${item.id}">${escapeHtml(item.name)}</option>`).join('') || '<option>尚无任务</option>';
     await selectTask(query.get('task') || localStorage.getItem('planning-task'), query.get('assessment'));
 }
-$('navigation').innerHTML = Object.entries({tasks:'规划任务', resources:'资源配置', diagnosis:'感知诊断', planning:'网络规划', plans:'方案管理', acceptance:'任务验证', research:'研究问题', demonstration:'示范应用'}).map(([path,label]) => `<a href="${root}/${path}" class="${path === 'acceptance' ? 'active' : ''}">${label}</a>`).join('');
+$('navigation').innerHTML = Object.entries({tasks:'规划任务', resources:'资源配置', diagnosis:'感知诊断', planning:'网络规划', plans:'方案管理', acceptance:'任务验证', twin:'研究必要性孪生', research:'研究问题', demonstration:'示范应用'}).map(([path,label]) => `<a href="${root}/${path}" class="${path === 'acceptance' ? 'active' : ''}">${label}</a>`).join('');
 window.addEventListener('beforeunload', () => {clearTimeout(timer); viewer?.destroy(); flightViewer?.destroy();});
 perform(initialize);

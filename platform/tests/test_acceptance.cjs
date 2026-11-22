@@ -47,7 +47,8 @@ test('assessment displays numerical failure and preserves mounted links',async()
   assert.equal(get('result').hidden,false);
   assert.match(get('conclusion').textContent,/存在缺口/);
   assert.match(get('indicators').innerHTML,/89.00%/);
-  assert.match(get('indicators').innerHTML,/本次仿真未通过/);
+  assert.match(get('indicators').innerHTML,/仿真数值未达标/);
+  assert.match(get('indicators').innerHTML,/旧版本，需重新计算/);
   assert.match(get('research-links').innerHTML,new RegExp(prefix+'/research/1\\?task=T1&assessment=J1'));
   assert(calls.every(call=>call.url.startsWith(prefix+'/api/')));
  }

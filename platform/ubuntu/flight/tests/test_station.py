@@ -104,13 +104,22 @@ def test_planning_workflow_mounted_pages_and_task(api):
     assert api.post('/network/api/workflow/tasks/'+task_id+'/diagnose',json={}).status_code == 200
 
 
-def test_default_entry_preserves_original_ground_station(api):
-    for path in ('/', '/?view=patrol', '/?view=fly', '/?view=unknown'):
+def test_workspace_entry_and_station_deep_links(api):
+    for path in ('/', '/?platform=planning'):
+        page = api.get(path)
+        assert page.status_code == 200
+        assert '/static/unified-workspace.js' in page.text
+        assert page.headers['cache-control'] == 'no-store'
+    embedded = api.get('/', headers={'Sec-Fetch-Dest': 'iframe'})
+    assert '/static/gcs.js' in embedded.text
+    for path in ('/station', '/?view=patrol', '/?view=fly', '/?view=unknown', '/?source=sim&record=sample',
+                 '/?dual=sample', '/?assessment=sample'):
         page=api.get(path)
         assert page.status_code==200
         assert '/static/gcs.js' in page.text
         assert '/static/region-management.js' in page.text
         assert 'id="managed-area"' in page.text
         assert 'id="vehicle-select"' in page.text
+        assert 'id="portal-link" href="/service/"' in page.text
         assert '/static/workbench.js' not in page.text
     assert '/static/gcs.js' in api.get('/?view=workbench').text

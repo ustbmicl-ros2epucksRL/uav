@@ -71,7 +71,7 @@ def task_validation(job):
         rows = [row for row in job['indicators'] if row['research'] == item['id']
                 or (item['id'] == 2 and row['id'] in ('task-precision', 'task-low-precision'))]
         item['counts'] = {status: sum(row['status'] == status for row in rows)
-                          for status in ('simulation_pass', 'simulation_fail', 'pending_evidence')}
+                          for status in ('simulation_pass', 'simulation_fail', 'function_verified', 'pending_evidence')}
         item['stale'] = job['stale']
         item['evidence_type'] = result.get('evidence_type', 'synthetic_model')
         item['pending_requirements'] = [row['requirement'] for row in rows if row['status'] == 'pending_evidence']

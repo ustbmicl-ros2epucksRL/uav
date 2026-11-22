@@ -27,9 +27,11 @@ python3 -m venv /tmp/uav-venv
 SENSE_PYTHON=/tmp/uav-venv/bin/python SENSE_SERVICE=flight bash platform/scripts/run.sh
 ```
 
-- 地面站：`http://127.0.0.1:8772/`
-- 统一业务入口：`http://127.0.0.1:8772/service/`
-- 感知网络规划：`http://127.0.0.1:8772/network/`
+打开 [统一工作台](http://127.0.0.1:8772/)，从左上切换区域地面站、感知网络规划和低空服务管理。左下列出现有只读 Skill 和航路算法。中央业务页面支持全屏和还原。底部 Chat 可以查看执行步骤、证据及历史记录。
+
+独立业务页面分别位于 `/station`、`/network/`、`/service/`。如本地配置了 `SENSE_PORT=8894`，可以用 [8894 工作台入口](http://127.0.0.1:8894/) 访问。
+
+![统一工作台的业务区、左侧导航和底部 Chat](platform/docs/figures/unified-workspace.png)
 
 也可分别设置 `SENSE_SERVICE=planning` 或 `lowair` 启动独立服务，默认端口为 8767、8771。
 使用 `SENSE_DATA_DIR`、`FLIGHT_DATA_DIR`、`LOWAIR_DATA_DIR` 分别配置数据目录；独立与挂载业务服务应明确使用同一数据归属。

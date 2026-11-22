@@ -9,6 +9,7 @@ from . import jobs, store, planning_portal as portal
 from .job_compute import provenance
 from .task_validation import task_validation
 from .planning_assessment import AssessmentRequest, geometry, variants, planned_devices
+from .proposal_kpi import HISTORICAL, LEGACY_VERSION, VERSION, published_indicators, recorded_checks
 
 router = APIRouter()
 
@@ -51,6 +52,11 @@ def assessment_title(snapshot):
             return '低位站址与设备组合优化'
         return '低空精度优化'
     return '全域精度优化' if parameters.get('strategy') == 'precision' else '覆盖规划基准'
+
+
+@router.get('/api/acceptance')
+def acceptance_indicators():
+    return published_indicators()
 
 
 @router.get('/acceptance')
@@ -157,18 +163,34 @@ def evidence(job):
 def indicator_rows(job, linked):
     result = job['result']
     stats = result['stats']
-    checks = result['checks']
+    version, standard, checks = recorded_checks(result)
     def numeric(identifier, requirement, value, passed, research, page):
-        return dict(id=identifier, requirement=requirement, value=value,
+        return dict(id=identifier, requirement=requirement, value=value, kpi_version=version,
                     status='simulation_pass' if passed else 'simulation_fail', research=research, pdf_page=page)
+    def historical(identifier, requirement, value, passed, research, page):
+        return dict(id=identifier, requirement=requirement, value=value, kpi_version=LEGACY_VERSION,
+                    status='historical_met' if passed else 'historical_unmet', decides_pass=False,
+                    research=research, pdf_page=page)
+    grid_value = f"{result['settings']['wide_cell']:g} m / {result['settings']['focus_cell']:g} m，{result['evaluated_cells']:,} 网格"
+    domain_ready = checks['full_domain'] and checks['full_focus'] and checks['resolution']
     rows = [
-        numeric('3.2-grid', '广域 ≤10 m / 重点区 ≤2 m，完整评估任务空域',
-                f"{result['settings']['wide_cell']:g} m / {result['settings']['focus_cell']:g} m，{result['evaluated_cells']:,} 网格",
-                checks['resolution'] and checks['full_domain'] and checks['full_focus'], 1, 18),
-        numeric('3.2-modalities', '典型仿真 ≥3 类异构感知设备', '、'.join(result['modalities']), checks['modalities_3'], 1, 18),
-        numeric('5.3-wide', '典型规划仿真全域覆盖 ≥90%', stats['coverage'], checks['coverage_90'] and checks['full_domain'] and checks['resolution'] and checks['full_focus'], 3, 19),
-        numeric('5.3-focus', '典型规划仿真重点区覆盖 ≥95%', stats['focus_coverage'], checks['focus_95'] and checks['full_focus'] and checks['resolution'], 3, 19),
+        numeric('3.2-grid', f"广域 ≤{standard['wide_cell_m']:g} m / 重点区 ≤{standard['focus_cell_m']:g} m，完整评估任务空域",
+                grid_value, domain_ready, 1, 18),
+        numeric('3.2-modalities', f"典型仿真 ≥{standard['modalities']} 类异构感知设备", '、'.join(result['modalities']), checks['modalities_3'], 1, 18),
+        numeric('5.3-wide', f"典型规划仿真空间覆盖 ≥{standard['coverage']:.0%}", stats['coverage'], checks['coverage'] and domain_ready, 3, 19),
+        numeric('5.3-focus', f"典型规划仿真重点区覆盖 ≥{standard['focus_coverage']:.0%}", stats['focus_coverage'], checks['focus_coverage'] and domain_ready, 3, 19),
     ]
+    if version == VERSION:
+        rows[1:1] = [historical('3.2-grid-historical', f"历史对照，不决定本次通过：广域 ≤{HISTORICAL['wide_cell_m']:g} m / 重点区 ≤{HISTORICAL['focus_cell_m']:g} m",
+                                grid_value, checks['historical']['resolution'], 1, 18)]
+        rows += [historical('5.3-wide-historical', f"历史对照，不决定本次通过：空间覆盖 ≥{HISTORICAL['coverage']:.0%}",
+                            stats['coverage'], checks['historical']['coverage'], 3, 19),
+                 historical('5.3-focus-historical', f"历史对照，不决定本次通过：重点区覆盖 ≥{HISTORICAL['focus_coverage']:.0%}",
+                            stats['focus_coverage'], checks['historical']['focus_coverage'], 3, 19)]
+    else:
+        rows.insert(0, dict(id='kpi-version', requirement=f'本记录按旧指标版本 {LEGACY_VERSION} 判定',
+                            value=f'按当前申报书口径 {VERSION} 评价需重新提交计算，生成新记录', kpi_version=version,
+                            status='pending_evidence', research=1, pdf_page=18))
     task = job['snapshot']['task']
     precision = stats.get('precision_pass_rate')
     rows.append(numeric('task-precision',
@@ -183,19 +205,23 @@ def indicator_rows(job, linked):
         rows.append(numeric('task-low-precision', f"任务30–100 m低空层理论精度合格比例 ≥{low['target']:.0%}",
                             rate, rate is not None and rate >= low['target'] and full_low
                             and checks['full_focus'] and checks['resolution'], 3, 19))
+    s = standard
+    functional = [
+        ('2.3', f"平台支持 ≥{s['platform_devices']} 类异构感知设备", '软件定义 RADAR / EO / RF / IR / ADSB 共 5 类；真实设备接入 0 类，协议联调证据待补', 4, 18),
+        ('2.4', f"≥{s['planning_parameters']} 类规划决策参数可配置", '站址、型号组合、挂高、朝向 4 类进入搜索，另有预算和工程容量约束', 3, 18),
+        ('4.1-4.4', f"≥{s['interference_factors']} 种干扰衰减因素、≥{s['efficacy_metrics']} 类效能指标", '同频、通信、天气 3 种损耗与建筑遮挡；Pd / SINR / CRLB 3 类已计算，物理模型标定待补', 2, 19),
+    ]
+    rows.extend(dict(id=i, requirement=r, value=v, status='function_verified', kpi_version=version, research=t, pdf_page=p) for i, r, v, t, p in functional)
     pending = [
-        ('1-report', '低空全域多模态感知网络规划体系报告', '已有计算证据导出，体系报告需汇编与评审', 1, 17),
-        ('2.3', '统一管理 ≥5 类异构感知设备', '软件定义 RADAR / EO / RF / IR / ADSB，真实协议联调证据待补', 4, 18),
-        ('2.4', '≥4 类规划决策参数可配置', '站址、型号组合、挂高、朝向进入搜索，另有预算和工程容量约束', 3, 18),
-        ('4.1-4.4', '≥3 类干扰衰减因素、≥3 类三维效能指标', '同频、通信、天气损耗与遮挡；Pd / SINR / CRLB 已计算，物理模型验证待补', 2, 19),
+        ('1-report', '低空多模态感知网络规划体系报告', '已有计算证据导出，体系报告需汇编与评审', 1, 17),
         ('5.1-5.3', '站址初筛、双约束加密、设备与挂载联合优化', result['method'] + '；' + result['optimality'], 3, 19),
         ('platform', '在线标定、滚动优化、云边端协同运行', '任务、方案、试验和运行记录已关联；在线设备执行与持续运行需联调', 4, 17),
-        ('demo-scenes', '≥3 个现场示范场景', f"本方案关联 {len(linked['trials'])} 项试验，导入现场标记记录 {linked['imported_field_runs']} 份，待现场核验", 5, 19),
-        ('demo-tasks', '≥5 类现场示范任务', '、'.join(sorted({k for t in linked['trials'] for k in t['kinds']})) or '待建立本方案示范试验', 5, 19),
-        ('outputs', '≥5 篇论文、≥10 项发明专利、≥3 项软著', '待补成果及受理/授权凭证', 5, 20),
-        ('training', '≥6 名研究生、≥10 名技术骨干', '待补培养与培训记录', 5, 16),
+        ('demo-scenes', f"≥{s['demo_scenes']} 个现场示范场景", f"本方案关联 {len(linked['trials'])} 项试验，导入现场标记记录 {linked['imported_field_runs']} 份，待现场核验；合成场景只作示范准备证据", 5, 19),
+        ('demo-tasks', f"≥{s['demo_tasks']} 个现场示范任务", '、'.join(sorted({k for t in linked['trials'] for k in t['kinds']})) or '待建立本方案示范试验', 5, 19),
+        ('outputs', f"≥{s['papers']} 篇论文、≥{s['patents']} 项发明专利、≥{s['software']} 项软著", '待补成果及受理/授权凭证', 5, 20),
+        ('training', f"≥{s['graduate_students']} 名研究生、≥{s['engineers']} 名技术骨干", '待补培养与培训记录', 5, 16),
     ]
-    rows.extend(dict(id=i, requirement=r, value=v, status='pending_evidence', research=t, pdf_page=p) for i, r, v, t, p in pending)
+    rows.extend(dict(id=i, requirement=r, value=v, status='pending_evidence', kpi_version=version, research=t, pdf_page=p) for i, r, v, t, p in pending)
     return rows
 
 

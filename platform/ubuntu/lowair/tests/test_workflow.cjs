@@ -6,3 +6,12 @@ test('SITL validation exposes prepare without local dispatch and carries task ex
 test('mounted service uses the unified origin and /service API prefix',async()=>{const h=harness('/service/');const calls=[];h.ctx.fetch=async(path)=>{calls.push(path);return {ok:true,json:async()=>({})}};await h.run("api('/api/tasks')");assert.equal(calls[0],'/service/api/tasks');assert.equal(h.els['system-home'].href,'http://localhost:8772/');});
 
 test('assistant loads from the existing ground origin without replacing business content',()=>{const h=harness('/service/');assert.equal(h.els.assistantScript.src,'http://localhost:8772/network/static/agent-assistant.js?v=20261117');assert.equal(h.els.assistantScript.defer,true);});
+
+test('tab selected during initial load renders once the complete snapshot arrives',()=>{
+    const h=harness('/service/');
+    h.run("tab='applications';render()");
+    assert.equal(h.els['workspace-title'].textContent, '申请审批');
+    assert.equal(h.els.content, undefined);
+    h.run("data={performance:{},resources:{resources:[]},applications:{applications:[]}};render()");
+    assert(h.els.content.innerHTML.includes('提交飞行申请'));
+});

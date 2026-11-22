@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <title>低空统一工作台</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="/static/unified-workspace.css">
+    <script src="/static/workspace-business-links.js" defer></script>
+    <script src="/static/unified-workspace.js" defer></script>
+</head>
+<body>
+    <div id="workspace">
+        <aside id="workspace-nav" aria-label="工作台导航">
+            <header class="brand">
+                <span class="brand-mark" aria-hidden="true"></span>
+                <h1>低空工作台</h1>
+                <button id="nav-close" class="rail-close" type="button" aria-label="关闭导航">×</button>
+            </header>
+            <div class="rail-body">
+                <nav id="platform-list" aria-labelledby="platform-label">
+                    <h2 id="platform-label">业务平台</h2>
+                    <button type="button" data-platform="station" aria-current="page">
+                        <span class="nav-icon station-icon" aria-hidden="true"></span>区域地面站
+                    </button>
+                    <button type="button" data-platform="planning">
+                        <span class="nav-icon planning-icon" aria-hidden="true"></span>感知网络规划
+                    </button>
+                    <button type="button" data-platform="service">
+                        <span class="nav-icon service-icon" aria-hidden="true"></span>低空服务管理
+                    </button>
+                </nav>
+                <section class="library" aria-labelledby="skills-label">
+                    <h2 id="skills-label">Skill <span class="section-secondary">助手技能</span></h2>
+                    <div id="skill-list" class="library-list" aria-busy="true"><p class="rail-note">正在读取技能…</p></div>
+                </section>
+                <section class="library" aria-labelledby="algorithms-label">
+                    <h2 id="algorithms-label">航路算法</h2>
+                    <div id="algorithm-list" class="library-list">
+                        <button type="button" data-algorithm="bitstar"><span class="library-icon algorithm-icon" aria-hidden="true">ƒ</span>OMPL BIT*</button>
+                        <button type="button" data-algorithm="acs_ds"><span class="library-icon algorithm-icon" aria-hidden="true">ƒ</span>ACS-DS</button>
+                        <button type="button" data-algorithm="astar"><span class="library-icon algorithm-icon" aria-hidden="true">ƒ</span>A*</button>
+                    </div>
+                </section>
+            </div>
+        </aside>
+        <button type="button" id="nav-scrim" aria-label="收起工作台导航" hidden></button>
+        <main id="main-workspace">
+            <section id="business-stage" aria-labelledby="stage-title">
+                <header class="stage-bar">
+                    <button type="button" id="nav-toggle" class="icon-button mobile-only" aria-label="打开工作台导航" aria-controls="workspace-nav" aria-expanded="false">
+                        <span class="menu-icon" aria-hidden="true"></span>
+                    </button>
+                    <h2 id="stage-title">区域地面站</h2>
+                    <button type="button" id="stage-fullscreen" class="toolbar-button" aria-pressed="false">
+                        <span class="expand-icon" aria-hidden="true"></span><span id="fullscreen-label">全屏</span>
+                    </button>
+                </header>
+                <div id="business-frames"></div>
+            </section>
+            <section id="chat-dock" aria-labelledby="chat-title">
+                <div id="chat-resize" role="separator" aria-orientation="horizontal" aria-label="调整 Chat 高度" aria-controls="chat-frame" tabindex="0" title="拖动或用上下方向键调整高度"></div>
+                <header class="chat-bar">
+                    <span class="chat-mark" aria-hidden="true">✦</span>
+                    <h2 id="chat-title">Chat</h2>
+                    <span class="chat-name">平台助手</span>
+                    <button type="button" id="chat-toggle" class="toolbar-button" aria-controls="chat-frame" aria-expanded="true">
+                        <span id="chat-toggle-label">收起</span><span class="chevron" aria-hidden="true"></span>
+                    </button>
+                </header>
+                <iframe id="chat-frame" title="平台助手 Chat"></iframe>
+            </section>
+        </main>
+        <p id="shell-status" class="visually-hidden" aria-live="polite"></p>
+    </div>
+</body>
+</html>
