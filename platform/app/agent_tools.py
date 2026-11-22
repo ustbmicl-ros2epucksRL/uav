@@ -25,7 +25,7 @@ DESCRIPTIONS = {
     'planning_records': '读取所选场景最近 20 个规划任务摘要；没有记录时明确返回空列表。',
     'assessment_results': '读取所选场景最近 10 个验算结果摘要及历史场景版本；不启动计算或应用方案。',
     'twin_experiment': '读取指定实验的航线选段；未指定时读取所选场景最近的数字孪生实验。对比同一参考航迹上的现有部署、方法方案与反事实方案，并标明合成证据。',
-    'proposal_kpi': '读取申报书当前考核指标版本与阈值，以及仅作历史对照、不参与判定的旧平台指标。',
+    'proposal_kpi': '读取正式申报书考核指标版本与阈值，以及仅作对照、不参与判定的早期稿指标。',
 }
 ToolName = Literal['scene_snapshot', 'diagnose_coverage', 'planning_records', 'assessment_results',
                    'twin_experiment', 'proposal_kpi']

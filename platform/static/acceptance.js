@@ -5,7 +5,7 @@ const escapeHtml = value => String(value ?? '').replace(/申请书|申报书/g, 
 const percent = value => value == null ? '无有效样本' : (value * 100).toFixed(2) + '%';
 const difference = (before, after) => before == null || after == null ? '无有效样本' : ((after-before)*100).toFixed(3);
 const statuses = {queued:'排队中', running:'计算中', succeeded:'已完成', failed:'失败', cancelled:'已取消', interrupted:'已中断'};
-const labels = {simulation_pass:'仿真数值达标', simulation_fail:'仿真数值未达标', function_verified:'功能已验证（软件）', pending_evidence:'现场证据待补', historical_met:'历史对照已达到', historical_unmet:'历史对照未达到'};
+const labels = {simulation_pass:'仿真数值达标', simulation_fail:'仿真数值未达标', function_verified:'功能已验证（软件）', pending_evidence:'现场证据待补', historical_met:'早期稿对照已达到', historical_unmet:'早期稿对照未达到'};
 let tasks = [], task = null, current = null, viewer = null, flightViewer = null, timer = null, busy = false, sequence = 0;
 let assessmentHistory = [];
 const query = new URLSearchParams(location.search);

@@ -9,7 +9,7 @@ from . import jobs, store, planning_portal as portal
 from .job_compute import provenance
 from .task_validation import task_validation
 from .planning_assessment import AssessmentRequest, geometry, variants, planned_devices
-from .proposal_kpi import HISTORICAL, LEGACY_VERSION, VERSION, published_indicators, recorded_checks
+from .proposal_kpi import HISTORICAL, VERSION, published_indicators, recorded_checks
 
 router = APIRouter()
 
@@ -168,7 +168,7 @@ def indicator_rows(job, linked):
         return dict(id=identifier, requirement=requirement, value=value, kpi_version=version,
                     status='simulation_pass' if passed else 'simulation_fail', research=research, pdf_page=page)
     def historical(identifier, requirement, value, passed, research, page):
-        return dict(id=identifier, requirement=requirement, value=value, kpi_version=LEGACY_VERSION,
+        return dict(id=identifier, requirement=requirement, value=value, kpi_version=HISTORICAL['version'],
                     status='historical_met' if passed else 'historical_unmet', decides_pass=False,
                     research=research, pdf_page=page)
     grid_value = f"{result['settings']['wide_cell']:g} m / {result['settings']['focus_cell']:g} m，{result['evaluated_cells']:,} 网格"
@@ -181,15 +181,16 @@ def indicator_rows(job, linked):
         numeric('5.3-focus', f"典型规划仿真重点区覆盖 ≥{standard['focus_coverage']:.0%}", stats['focus_coverage'], checks['focus_coverage'] and domain_ready, 3, 19),
     ]
     if version == VERSION:
-        rows[1:1] = [historical('3.2-grid-historical', f"历史对照，不决定本次通过：广域 ≤{HISTORICAL['wide_cell_m']:g} m / 重点区 ≤{HISTORICAL['focus_cell_m']:g} m",
+        label = HISTORICAL['label'] + '，不决定本次通过'
+        rows[1:1] = [historical('3.2-grid-historical', f"{label}：广域 ≤{HISTORICAL['wide_cell_m']:g} m / 重点区 ≤{HISTORICAL['focus_cell_m']:g} m",
                                 grid_value, checks['historical']['resolution'], 1, 18)]
-        rows += [historical('5.3-wide-historical', f"历史对照，不决定本次通过：空间覆盖 ≥{HISTORICAL['coverage']:.0%}",
+        rows += [historical('5.3-wide-historical', f"{label}：空间覆盖 ≥{HISTORICAL['coverage']:.0%}",
                             stats['coverage'], checks['historical']['coverage'], 3, 19),
-                 historical('5.3-focus-historical', f"历史对照，不决定本次通过：重点区覆盖 ≥{HISTORICAL['focus_coverage']:.0%}",
+                 historical('5.3-focus-historical', f"{label}：重点区覆盖 ≥{HISTORICAL['focus_coverage']:.0%}",
                             stats['focus_coverage'], checks['historical']['focus_coverage'], 3, 19)]
     else:
-        rows.insert(0, dict(id='kpi-version', requirement=f'本记录按旧指标版本 {LEGACY_VERSION} 判定',
-                            value=f'按当前申报书口径 {VERSION} 评价需重新提交计算，生成新记录', kpi_version=version,
+        rows.insert(0, dict(id='kpi-version', requirement=f'本记录按旧指标版本 {version} 判定',
+                            value=f'按正式申报书口径 {VERSION} 评价需重新提交计算，生成新记录', kpi_version=version,
                             status='pending_evidence', research=1, pdf_page=18))
     task = job['snapshot']['task']
     precision = stats.get('precision_pass_rate')

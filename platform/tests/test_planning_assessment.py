@@ -441,38 +441,56 @@ def test_task_validation_reports_gaps_without_promoting_field_evidence(client):
 def test_proposal_pass_uses_one_standard_and_keeps_historical_comparison():
     from app.proposal_kpi import HISTORICAL, VERSION, simulation_checks
     from app.acceptance_api import indicator_rows
-    current = simulation_checks(dict(coverage=.82, focus_coverage=.86), 20, 5, 3)
+    current = simulation_checks(dict(coverage=.91, focus_coverage=.96), 10, 2, 3)
     assert current['coverage'] and current['focus_coverage'] and current['resolution'] and current['modalities_3']
     assert current['historical']['decides_pass'] is False
-    assert current['historical']['coverage'] is False
-    assert current['historical']['focus_coverage'] is False
-    assert current['historical']['resolution'] is False
-    assert current['coverage_90'] is False and current['focus_95'] is False
-    historical = simulation_checks(dict(coverage=.91, focus_coverage=.96), 10, 2, 3)
-    assert historical['coverage'] and historical['focus_coverage'] and historical['resolution']
-    assert historical['historical']['coverage'] and historical['historical']['focus_coverage'] and historical['historical']['resolution']
-    below = simulation_checks(dict(coverage=.79, focus_coverage=.85), 30, 10, 2)
-    assert below['coverage'] is False and below['focus_coverage'] and below['resolution']
+    assert current['historical']['coverage'] and current['historical']['focus_coverage'] and current['historical']['resolution']
+    assert current['coverage_90'] and current['focus_95']
+    draft_only = simulation_checks(dict(coverage=.82, focus_coverage=.86), 20, 5, 3)
+    assert draft_only['coverage'] is False and draft_only['focus_coverage'] is False and draft_only['resolution'] is False
+    assert draft_only['historical']['coverage'] and draft_only['historical']['focus_coverage'] and draft_only['historical']['resolution']
+    below = simulation_checks(dict(coverage=.90, focus_coverage=.949), 10, 2, 2)
+    assert below['coverage'] and below['focus_coverage'] is False and below['resolution']
     assert below['modalities_3'] is False
     result = dict(stats=dict(coverage=.82, focus_coverage=.86, precision_pass_rate=.5),
                   settings=dict(wide_cell=20, focus_cell=5, bounds=[0, 2000, 0, 2000, 30, 300]),
                   evaluated_cells=12, modalities=['EO', 'RADAR', 'RF'], precision_threshold_m=30,
-                  checks=dict(full_domain=True, full_focus=True, **current), kpi_version=VERSION,
+                  checks=dict(full_domain=True, full_focus=True, **draft_only), kpi_version=VERSION,
                   method='回归', optimality='有限搜索')
     job = dict(result=result, snapshot=dict(task=dict(precision_rate_target=.8)))
     linked = dict(trials=[], runs=[], imported_field_runs=0)
     rows = {row['id']: row for row in indicator_rows(job, linked)}
     assert 'kpi-version' not in rows and rows['5.3-wide']['kpi_version'] == VERSION
-    assert rows['3.2-grid']['requirement'] == '广域 ≤30 m / 重点区 ≤10 m，完整评估任务空域'
-    assert rows['3.2-grid']['status'] == 'simulation_pass'
-    assert rows['5.3-wide']['requirement'] == '典型规划仿真空间覆盖 ≥80%'
-    assert rows['5.3-wide']['status'] == 'simulation_pass'
-    assert rows['5.3-focus']['status'] == 'simulation_pass'
-    assert rows['5.3-wide-historical']['status'] == 'historical_unmet'
+    assert rows['3.2-grid']['requirement'] == '广域 ≤10 m / 重点区 ≤2 m，完整评估任务空域'
+    assert rows['3.2-grid']['status'] == 'simulation_fail'
+    assert rows['5.3-wide']['requirement'] == '典型规划仿真空间覆盖 ≥90%'
+    assert rows['5.3-wide']['status'] == 'simulation_fail'
+    assert rows['5.3-focus']['status'] == 'simulation_fail'
+    assert rows['5.3-wide-historical']['status'] == 'historical_met'
     assert rows['5.3-wide-historical']['decides_pass'] is False
-    assert rows['3.2-grid-historical']['status'] == 'historical_unmet'
+    assert rows['5.3-wide-historical']['kpi_version'] == HISTORICAL['version']
+    assert rows['3.2-grid-historical']['status'] == 'historical_met'
     assert sum(row['status'] == 'function_verified' for row in rows.values()) >= 3
     assert HISTORICAL['decides_pass'] is False
+
+
+def test_draft_record_keeps_draft_standard_and_asks_for_recompute():
+    from app.proposal_kpi import DRAFT_VERSION, VERSION
+    from app.acceptance_api import indicator_rows
+    result = dict(stats=dict(coverage=.82, focus_coverage=.86, precision_pass_rate=.5),
+                  settings=dict(wide_cell=20, focus_cell=5, bounds=[0, 2000, 0, 2000, 30, 300]),
+                  evaluated_cells=12, modalities=['EO', 'RADAR', 'RF'], precision_threshold_m=30,
+                  checks=dict(full_domain=True, full_focus=True, resolution=True, coverage=True, focus_coverage=True,
+                              modalities_3=True, coverage_90=False, focus_95=False,
+                              historical=dict(resolution=False, coverage=False, focus_coverage=False, decides_pass=False)),
+                  kpi_version=DRAFT_VERSION, method='回归', optimality='有限搜索')
+    job = dict(result=result, snapshot=dict(task=dict(precision_rate_target=.8)))
+    rows = {row['id']: row for row in indicator_rows(job, dict(trials=[], runs=[], imported_field_runs=0))}
+    assert DRAFT_VERSION in rows['kpi-version']['requirement'] and VERSION in rows['kpi-version']['value']
+    assert rows['5.3-wide']['kpi_version'] == DRAFT_VERSION
+    assert rows['5.3-wide']['requirement'] == '典型规划仿真空间覆盖 ≥80%'
+    assert rows['5.3-wide']['status'] == 'simulation_pass'
+    assert '5.3-wide-historical' not in rows
 
 
 def test_legacy_record_keeps_its_own_version_and_asks_for_recompute():
@@ -497,9 +515,9 @@ def test_engineering_report_publishes_the_same_standard(client):
     report = client.get('/api/scenes/urban/engineering/report').json()
     acceptance = report['acceptance']
     assert acceptance['source'] == CURRENT['source']
-    assert acceptance['grid_resolution_m'] == {'general': 30, 'focus': 10}
-    assert acceptance['coverage'] == {'general': 0.8, 'focus': 0.85}
-    assert acceptance['heterogeneous_equipment']['target'] == 3
+    assert acceptance['grid_resolution_m'] == {'general': 10, 'focus': 2}
+    assert acceptance['coverage'] == {'general': 0.9, 'focus': 0.95}
+    assert acceptance['heterogeneous_equipment']['target'] == 5
     assert acceptance['historical']['decides_pass'] is False
     assert acceptance['historical']['grid_resolution_m'] == {'general': HISTORICAL['wide_cell_m'], 'focus': HISTORICAL['focus_cell_m']}
-    assert acceptance['historical']['coverage'] == {'general': 0.9, 'focus': 0.95}
+    assert acceptance['historical']['coverage'] == {'general': 0.8, 'focus': 0.85}
