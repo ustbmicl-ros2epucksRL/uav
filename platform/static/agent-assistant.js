@@ -19,7 +19,6 @@
         .panel{position:fixed;right:14px;top:14px;bottom:14px;width:min(450px,calc(100vw - 28px));z-index:2100;display:flex;flex-direction:column;overflow:hidden;border:1px solid #bfd0dc;border-radius:14px;background:#f3f6fa;box-shadow:0 12px 45px #102f4344}
         .heading{display:flex;align-items:center;gap:10px;padding:12px 14px;background:#142e43;color:white}
         .heading strong{font-size:17px;flex:1}.heading a{color:#cde8f0;font-size:12px}.heading button{padding:6px 10px}
-        .note{margin:0;padding:9px 14px;font-size:12px;line-height:1.6;color:#4d6677;background:#eaf2f6}
         .load-status{margin:0;padding:8px 14px;font-size:12px;line-height:1.5}
         iframe{width:100%;flex:1;min-height:0;border:0;background:#f3f6fa}
         @media(max-width:600px){.panel{inset:8px;width:calc(100vw - 16px)}.launcher{right:12px;bottom:12px}}
@@ -37,13 +36,11 @@
     const close = document.createElement('button'); close.type = 'button'; close.textContent = '收起';
     close.setAttribute('aria-label', '收起平台助手');
     heading.append(title, full, close);
-    const note = document.createElement('p'); note.className = 'note';
-    note.textContent = '辅助分析窗口。请核对助手中的分析场景；原工作台继续可用。收起不会停止后台分析。';
     const loadStatus = document.createElement('p'); loadStatus.className = 'load-status';
     loadStatus.textContent = '正在加载助手；如未显示，可打开独立窗口重试。';
     const frame = document.createElement('iframe'); frame.title = '平台助手诊断与证据';
     frame.referrerPolicy = 'same-origin';
-    panel.append(heading, note, loadStatus, frame); shadow.append(style, launcher, panel); document.body.append(host);
+    panel.append(heading, loadStatus, frame); shadow.append(style, launcher, panel); document.body.append(host);
     let loaded = false;
     function collapse() {
         panel.hidden = true; launcher.hidden = false; launcher.setAttribute('aria-expanded', 'false'); launcher.focus();
@@ -53,6 +50,12 @@
             // Only copy a known scene ID once. Never read task forms, telemetry, or unsaved edits.
             const selected = document.getElementById('scene')?.value;
             if (['urban','corridor','electromagnetic'].includes(selected)) agentURL.searchParams.set('scene',selected);
+            const workspace = document.getElementById('system-home') ? 'service'
+                : document.getElementById('vehicle-select') ? 'station' : 'planning';
+            agentURL.searchParams.set('workspace', workspace);
+            const standaloneURL = new URL(agentURL);
+            standaloneURL.searchParams.delete('embed');
+            full.href = standaloneURL.href;
             frame.src = agentURL.href; loaded = true;
         }
         panel.hidden = false; launcher.hidden = true; launcher.setAttribute('aria-expanded', 'true'); close.focus();
@@ -65,6 +68,6 @@
     window.addEventListener('message', event => {
         if (event.origin !== agentURL.origin || event.source !== frame.contentWindow) return;
         if (event.data?.type === 'platform-assistant-close') collapse();
-        if (event.data?.type === 'platform-assistant-ready') loadStatus.textContent = '助手已载入；连接状态与错误会在窗口内显示。';
+        if (event.data?.type === 'platform-assistant-ready') loadStatus.hidden = true;
     });
 })();

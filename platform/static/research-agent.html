@@ -1,1 +1,111 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>低空研究智能体</title><link rel="icon" href="data:,"><link rel="stylesheet" href="static/portal.css"><style>body.agent-embedded>header,body.agent-embedded>nav,body.agent-embedded #memory-card{display:none}body.agent-embedded main{padding:10px}body.agent-embedded .card{padding:14px}body.agent-embedded h2{font-size:18px}body.agent-embedded .two,body.agent-embedded .agent-results{grid-template-columns:minmax(0,1fr)}#task-label[hidden],#scene-label[hidden]{display:none}#tool-catalog{white-space:pre-line;overflow-wrap:anywhere}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#eef4f7;padding:16px;border-radius:8px}textarea{width:100%;min-height:110px}.agent-results{display:grid;grid-template-columns:1fr 1fr;gap:16px}.agent-results>*{min-width:0}#trace details{margin:12px 0}#trace pre{max-height:400px;overflow:auto}@media(max-width:800px){.agent-results{grid-template-columns:1fr}}button:disabled{opacity:.5}#stage{font-weight:600;color:#146d80}</style></head><body><header><div><small>LOW-ALTITUDE RESEARCH AGENT</small><h1>低空研究智能体</h1></div><a href="/">返回地面站 ↗</a></header><nav id="navigation"></nav><main><section class="card"><h2>用平台证据支撑智能体建议</h2><p>选择平台诊断或研究算例 → 模型选择工具 → 平台读取或计算 → 引用证据 → 可选复核。</p><p id="model-status" role="status">检查本机模型…</p><div class="two"><label>工作流<select id="workflow"><option value="platform">平台诊断：场景、任务与验算证据</option><option value="research">研究算例：15 个合成实验</option></select></label><label id="scene-label">分析场景<select id="scene"><option value="urban">园区高密度建筑区</option><option value="corridor">物流主干道路</option><option value="electromagnetic">园区复杂电磁区</option></select></label></div><div class="two"><label id="task-label" hidden>研究子任务<select id="task"><option value="1">1 · 三维覆盖</option><option value="2">2 · 干扰与协同</option><option value="3">3 · 按需规划</option><option value="4">4 · 运行平台</option><option value="5">5 · 示范验证</option></select></label><label>协作模式<select id="mode"><option value="single">单智能体：协调与分析</option><option value="review">双角色：研究分析 + 证据复核</option></select></label></div><label>研究问题<textarea id="question" maxlength="3000">检查这个场景的设备配置、覆盖薄弱区域和已有规划验算，说明哪些结论有证据支持、哪些仍需验证。</textarea></label><div class="actions"><button id="run">开始研究</button><button id="cancel" class="secondary" disabled>停止本次任务</button><button id="export" class="secondary" disabled>导出研究记录</button></div><p id="run-context" class="muted"></p><p id="stage" role="status">尚未运行</p><p class="muted">平台诊断只读所选场景，不改变方案或控制飞机。覆盖诊断采用 50 m 合成基线；历史验算不代表当前达标。双角色共享模型，不能代替独立验证。</p></section><section class="card"><h2>工具与历史记录</h2><p id="tool-catalog">读取可用工具…</p><div class="actions"><select id="history" aria-label="历史智能体任务"><option value="">选择历史记录</option></select><button id="history-refresh" class="secondary">刷新记录</button></div><p class="muted">历史记录只展示已保存的证据；刷新或查看历史不会重跑任务。执行记录保存模型、输入快照、工具来源与证据编号。</p></section><section class="card" id="memory-card"><h2>观测记忆增量</h2><p>模型只把问题收成位置、身份报文或覆盖，以及时间窗。哪一段值得留下，由程序按记录计算：时间重叠、50 米内已有位置、同一持有者的同类记录不再计增量。字节预算用完即停。不改航路补站，不分配发射功率，也不把身份写成黑飞。</p><label>问题<textarea id="memory-question" maxlength="500">0 到 20 秒内，这个目标的位置记录还缺哪一段？</textarea></label><label>观测段落 JSON<textarea id="memory-segments" maxlength="8000">[{"id":"r1","holder":"site-a","kind":"position","t0":0,"t1":10,"x":100,"y":100,"z":80,"nbytes":400},{"id":"r2","holder":"site-b","kind":"position","t0":8,"t1":18,"x":140,"y":110,"z":80,"nbytes":400},{"id":"r3","holder":"site-a","kind":"identity","t0":0,"t1":20,"nbytes":80}]</textarea></label><label>字节预算<input id="memory-budget" type="number" min="1" max="20000000" value="500"></label><div class="actions"><button id="memory-rank" type="button">计算增量</button></div><p id="memory-stage" role="status">尚未计算</p><pre id="memory-result">结果会列在这里。</pre></section><div class="agent-results"><section class="card"><h2>研究分析</h2><div id="answer">运行后显示结论、数值证据、局限和下一步。</div></section><section class="card"><h2>证据复核</h2><div id="review">双角色模式下执行第二次分析。</div></section></div><section class="card"><h2>执行证据</h2><p id="purpose"></p><div id="trace">尚无工具调用。</div></section></main><script src="static/research-agent.js?v=20261117-tools" defer></script></body></html>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>低空研究智能体</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="static/portal.css">
+    <link rel="stylesheet" href="static/research-agent.css?v=20261121">
+    <script src="static/research-agent.js?v=20261121" defer></script>
+</head>
+<body>
+<header>
+    <h1>低空研究智能体</h1>
+    <a href="/">返回地面站 ↗</a>
+</header>
+<nav id="navigation" aria-label="规划功能"></nav>
+<main class="assistant-workspace">
+    <div class="assistant-content">
+        <section class="scope-panel" aria-label="分析上下文">
+            <div class="scope-heading">
+                <h2 id="host-context">平台助手</h2>
+                <span class="read-only">只读分析</span>
+            </div>
+            <details class="scope-controls">
+                <summary><strong>分析范围</strong> <span id="scope-summary">园区高密度建筑区</span></summary>
+                <div class="scope-fields">
+                    <label>工作流
+                        <select id="workflow">
+                            <option value="platform">平台诊断</option>
+                            <option value="research">研究算例</option>
+                        </select>
+                    </label>
+                    <label id="scene-label">分析场景
+                        <select id="scene">
+                            <option value="urban">园区高密度建筑区</option>
+                            <option value="corridor">物流主干道路</option>
+                            <option value="electromagnetic">园区复杂电磁区</option>
+                        </select>
+                    </label>
+                    <label id="task-label" hidden>研究子任务
+                        <select id="task">
+                            <option value="1">三维覆盖</option>
+                            <option value="2">干扰与协同</option>
+                            <option value="3">按需规划</option>
+                            <option value="4">运行平台</option>
+                            <option value="5">示范验证</option>
+                        </select>
+                    </label>
+                    <label>复核方式
+                        <select id="mode">
+                            <option value="single">仅分析</option>
+                            <option value="review">分析后由同一模型复核</option>
+                        </select>
+                    </label>
+                </div>
+                <p id="model-status" class="muted" role="status">检查本机模型…</p>
+                <details><summary>可用平台工具</summary><p id="tool-catalog">读取可用工具…</p></details>
+            </details>
+            <details class="history-panel">
+                <summary>历史记录</summary>
+                <div class="history-controls">
+                    <select id="history" aria-label="历史智能体任务"><option value="">选择历史记录</option></select>
+                    <button type="button" id="history-refresh" class="secondary">刷新</button>
+                </div>
+                <p id="history-status" class="muted" role="status">正在读取历史记录…</p>
+            </details>
+        </section>
+
+        <section class="run-panel" aria-label="分析记录">
+            <p id="run-context" class="user-message"></p>
+            <div class="run-heading"><h2>执行步骤</h2><p id="stage" role="status">等待提问</p></div>
+            <ol id="steps" class="run-steps"></ol>
+            <p id="purpose" class="muted"></p>
+            <h2>分析结果</h2>
+            <div id="answer" class="report-body">在下方输入问题，或打开历史记录查看已有分析。</div>
+            <section id="review-card" hidden>
+                <h2>证据复核</h2>
+                <div id="review" class="report-body"></div>
+            </section>
+            <section class="evidence-section">
+                <div class="run-heading"><h2>执行证据</h2>
+                    <button type="button" id="export" class="secondary" disabled>导出记录</button>
+                </div>
+                <div id="trace">尚无工具调用。</div>
+            </section>
+        </section>
+
+        <details class="memory-panel" id="memory-card">
+            <summary>观测记忆增量</summary>
+            <p>在指定时间窗和字节预算内，按位置、身份报文或覆盖记录计算每段观测的信息增量。</p>
+            <label>问题<textarea id="memory-question" maxlength="500">0 到 20 秒内，这个目标的位置记录还缺哪一段？</textarea></label>
+            <label>观测段落 JSON<textarea id="memory-segments" maxlength="8000">[{"id":"r1","holder":"site-a","kind":"position","t0":0,"t1":10,"x":100,"y":100,"z":80,"nbytes":400},{"id":"r2","holder":"site-b","kind":"position","t0":8,"t1":18,"x":140,"y":110,"z":80,"nbytes":400},{"id":"r3","holder":"site-a","kind":"identity","t0":0,"t1":20,"nbytes":80}]</textarea></label>
+            <label>字节预算<input id="memory-budget" type="number" min="1" max="20000000" value="500"></label>
+            <button type="button" id="memory-rank">计算增量</button>
+            <p id="memory-stage" role="status">尚未计算</p>
+            <pre id="memory-result">结果会列在这里。</pre>
+        </details>
+    </div>
+
+    <section class="composer" aria-label="提交新问题">
+        <label for="question">新问题</label>
+        <textarea id="question" rows="2" maxlength="3000" placeholder="例如：这个场景有哪些已保存的规划验算？"></textarea>
+        <div class="composer-actions">
+            <button type="button" id="cancel" class="secondary" disabled>停止任务</button>
+            <button type="button" id="run">开始分析</button>
+        </div>
+    </section>
+</main>
+</body>
+</html>

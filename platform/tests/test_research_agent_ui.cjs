@@ -10,6 +10,7 @@ function setup(pathname='/network/agents', search='') {
         append(...children){this.children.push(...children);}
         replaceChildren(...children){this.children=children;}
         click(){}
+        focus(){this.focused=true;}
     }
     const get=id=>elements[id]??=new Element();
     for(const [id,value] of Object.entries({workflow:'platform',scene:'corridor',task:'1',mode:'review',question:'检查廊道'}))get(id).value=value;
@@ -78,4 +79,49 @@ test('saved report shows its own scene even if current draft selection differs',
     const s=setup();await ready();s.state.run.request={workflow:'platform',scene:'urban',question:'历史园区问题'};
     s.get('history').value='a'.repeat(32);s.get('history').onchange();await ready();
     assert.match(s.get('run-context').textContent,/园区高密度建筑区.*历史园区问题/);
+});
+
+
+test('steps, report citations and tool cards address the same saved result', async () => {
+    const s = setup('/network/agents', '?embed=1&workspace=service');
+    await ready();
+    const run = s.state.run;
+    const result = {evidence_id:'ev-1', provenance:'stored_records', scene_revision:2, data:{tasks:[]}};
+    Object.assign(run, {
+        request:{workflow:'platform', scene:'urban', question:'旧任务', mode:'single'},
+        steps:[{label:'读取记录', status:'completed', started_at:'2026-11-21T16:00:00Z'}],
+        trace:[{tool:'planning_records', step_index:0, result}]
+    });
+    await vm.runInContext("poll('" + run.id + "',0)", s.context);
+    const card = s.get('trace').children[0];
+    const target = '/network/agents?embed=1&workspace=service#' + card.id;
+    assert.equal(s.get('host-context').textContent, '低空服务管理');
+    assert(s.get('steps').children[0].children.some(el => el.href === target));
+    assert(s.get('answer').children.some(el => el.href === target));
+    assert(card.children.some(el => el.textContent.includes('0 条规划任务')));
+    assert.equal(s.get('review-card').hidden, true);
+    await vm.runInContext("poll('" + run.id + "',0)", s.context);
+    assert.equal(s.get('trace').children[0], card);
+});
+
+test('opening a legacy record clears previous evidence without inventing steps', async () => {
+    const s = setup();
+    await ready();
+    s.state.run.trace = [{tool:'scene_snapshot', result:{evidence_id:'ev-first'}}];
+    await vm.runInContext("poll('first',0)", s.context);
+    s.state.run = {id:'b'.repeat(32),status:'interrupted',stage:'服务重启，任务已中断',trace:[]};
+    await vm.runInContext("poll('second',0)", s.context);
+    assert.match(s.get('stage').textContent, /中断/);
+    assert.match(s.get('steps').children[0].textContent, /未保存逐步时间/);
+    assert.equal(s.get('trace').children.length, 0);
+    assert.equal(s.calls.filter(c => c.options.method === 'POST').length, 0);
+});
+
+test('empty input stays in the composer and makes no request', async () => {
+    const s = setup();
+    await ready();
+    s.get('question').value = '   ';
+    await s.get('run').onclick();
+    assert(s.get('question').focused);
+    assert.equal(s.calls.filter(c => c.options.method === 'POST').length, 0);
 });

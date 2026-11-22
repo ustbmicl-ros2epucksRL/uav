@@ -90,7 +90,13 @@ def test_platform_workflow_persists_citations_and_snapshot(client, monkeypatch, 
     saved = agent.read(record['id'])
     assert saved['status'] == 'completed' and saved['input_snapshot']['snapshot_digest']
     assert len(saved['trace']) == 2 and ('review' in saved) == (mode == 'review')
+    for item in saved['trace']:
+        step = saved['steps'][item['step_index']]
+        assert step['key'] == 'tool:' + item['tool']
+        assert step['status'] == 'completed' and step['finished_at'] >= step['started_at']
     assert any('不是实时心跳' in note for note in saved['report']['source_limitations'])
+    keys = [step['key'] for step in saved['steps']]
+    assert keys == ['snapshot', 'select', 'tool:scene_snapshot', 'tool:assessment_results', 'report'] + (['review'] if mode == 'review' else [])
     assert len(calls) == (3 if mode == 'review' else 2)
     assert store.get('scene:urban') is None
 

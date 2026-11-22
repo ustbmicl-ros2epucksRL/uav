@@ -1,0 +1,124 @@
+body {
+    color: #213d4b;
+    background: #f5f8f8;
+}
+
+.assistant-workspace {
+    max-width: 850px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.assistant-workspace [hidden] { display: none; }
+.assistant-workspace h2 { margin: 0; font-size: 17px; }
+.assistant-workspace h3 { margin: 16px 0 5px; font-size: 14px; }
+.assistant-workspace p { margin: 7px 0; }
+.assistant-workspace details { margin: 0; padding: 10px 0; }
+.assistant-workspace details[open] > summary { margin-bottom: 10px; }
+.assistant-workspace summary { color: #2c5060; font-weight: 600; }
+.assistant-workspace summary::marker { color: #547c87; }
+.assistant-workspace pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.assistant-workspace button { font-size: 14px; }
+.assistant-workspace textarea { font: inherit; line-height: 1.5; resize: vertical; }
+.assistant-workspace textarea:focus-visible { outline: 3px solid #59aec5; outline-offset: 2px; }
+.assistant-workspace button:disabled { cursor: default; }
+
+.scope-panel, .run-panel, .composer, .memory-panel {
+    background: white;
+    border: 1px solid #d7e2e4;
+    border-radius: 12px;
+    margin: 0 0 12px;
+    padding: 16px 20px;
+}
+.scope-heading, .run-heading {
+    display: flex;
+    gap: 10px;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+}
+.scope-heading { margin-bottom: 10px; }
+.read-only { font-size: 12px; font-weight: 600; color: #396a68; }
+#scope-summary { font-size: 13px; font-weight: 400; color: #45646e; }
+.scope-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(145px, 100%), 1fr));
+    gap: 9px;
+}
+.history-controls, .composer-actions { display: flex; gap: 8px; }
+.history-controls select { flex: 1; }
+.history-controls button { flex: none; }
+#model-status, #tool-catalog, #history-status { font-size: 13px; }
+#tool-catalog { white-space: pre-line; }
+
+.user-message:not(:empty) {
+    margin: 0 0 18px auto;
+    max-width: 92%;
+    padding: 10px 14px;
+    background: #edf4f8;
+    border-radius: 12px 12px 3px 12px;
+    white-space: pre-wrap;
+}
+#stage { font-size: 13px; color: #146476; }
+.run-steps { padding-left: 25px; margin: 10px 0; }
+.run-steps li { padding: 3px 0; line-height: 1.55; }
+.run-steps li::marker { font-weight: 600; color: #386974; }
+.run-steps strong { margin-right: 6px; font-size: 14px; }
+.run-steps time, .run-steps span { color: #506a75; font-size: 12px; margin-right: 4px; }
+.run-steps .step-running span { color: #146476; font-weight: 600; }
+.run-steps .step-failed span, .run-steps .step-interrupted span { color: #9e4d22; }
+#purpose { font-size: 13px; }
+.run-panel > h2, #review-card, .evidence-section { margin-top: 20px; }
+.report-body { margin-top: 8px; line-height: 1.65; }
+.report-body pre {
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    max-height: none;
+    font: inherit;
+}
+#trace { margin-top: 9px; color: #3d5662; }
+#trace pre { max-height: 280px; margin: 8px 0; font-size: 12px; }
+#trace > details { padding: 12px 0; }
+.evidence-card {
+    margin-top: 9px;
+    padding: 10px 12px;
+    border: 1px solid #d7e2e4;
+    border-radius: 8px;
+    font-size: 13px;
+}
+.evidence-card h4 { margin: 0 0 6px; font-size: 15px; }
+.evidence-card:target { border-color: #267289; background: #f3f9fa; }
+.assistant-workspace .memory-panel { margin-bottom: 12px; padding: 16px 20px; }
+.memory-panel label { margin: 10px 0; }
+
+.composer { margin-bottom: 0; }
+.composer label { font-weight: 600; }
+.composer textarea { margin: 6px 0; }
+.composer-actions { justify-content: flex-end; }
+.agent-embedded > header, .agent-embedded > nav, .agent-embedded #memory-card { display: none; }
+.agent-embedded .assistant-workspace {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+    padding: 0;
+}
+.agent-embedded .assistant-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    scrollbar-gutter: stable;
+    padding: 10px;
+}
+.agent-embedded .scope-panel, .agent-embedded .run-panel { padding: 12px; }
+.agent-embedded .composer {
+    flex: none;
+    padding: 10px 14px;
+    border-width: 1px 0 0;
+    border-radius: 0;
+}
+.agent-embedded .composer textarea { max-height: 15vh; min-height: 42px; }
+@media (max-height: 380px) {
+    .agent-embedded .assistant-workspace { height: auto; }
+    .agent-embedded .assistant-content { overflow: visible; }
+}

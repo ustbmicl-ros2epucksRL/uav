@@ -37,6 +37,6 @@ test('only expected iframe origin and source can dismiss or mark the assistant r
     s.events.message({origin:'http://evil.test',source:s.frame.contentWindow,data:{type:'platform-assistant-close'}});assert.equal(s.panel.hidden,false);
     s.events.message({origin:'http://localhost:8772',source:{},data:{type:'platform-assistant-close'}});assert.equal(s.panel.hidden,false);
     s.events.message({origin:'http://localhost:8772',source:s.frame.contentWindow,data:{type:'platform-assistant-ready'}});
-    assert(s.elements.some(e=>e.textContent?.startsWith('助手已载入')));
+    assert(s.elements.find(e=>e.className==='load-status').hidden);
     s.events.message({origin:'http://localhost:8772',source:s.frame.contentWindow,data:{type:'platform-assistant-close'}});assert.equal(s.panel.hidden,true);
 });

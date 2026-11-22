@@ -26,7 +26,14 @@ def test_tool_workflow_two_roles(tmp_path,monkeypatch,mode):
     assert r['status']=='completed' and r['report']
     assert ('review' in r)==(mode=='review')
     assert len(roles)==(3 if mode=='review' else 2) and len(r['trace'])==2
-    assert a.read(r['id'])['trace'][1]['result']['values'][2]==.6
+    saved = a.read(r['id'])
+    assert saved['trace'][1]['result']['values'][2] == .6
+    expected_steps = ['catalog', 'select', 'experiment:1-1', 'report']
+    if mode == 'review':
+        expected_steps.append('review')
+    assert [step['key'] for step in saved['steps']] == expected_steps
+    assert all(step['status'] == 'completed' and step['finished_at'] >= step['started_at'] for step in saved['steps'])
+    assert [entry['step_index'] for entry in saved['trace']] == [0, 2]
 
 
 def test_unauthorized_model_action_rejected(tmp_path,monkeypatch):
@@ -36,6 +43,7 @@ def test_unauthorized_model_action_rejected(tmp_path,monkeypatch):
     r={'id':'b'*32,'request':{'task_id':1,'question':'测试','mode':'single'},'status':'running','trace':[]}
     asyncio.run(a.execute(r))
     assert r['status']=='failed' and '未授权' in r['error'] and len(r['trace'])==1
+    assert [(step['key'], step['status']) for step in r['steps']] == [('catalog', 'completed'), ('select', 'failed')]
 
 
 def test_memory_increment_skips_nearby_duplicate_and_respects_budget():
@@ -91,6 +99,8 @@ def test_cancel_releases_slot_and_model_failure_is_not_success(tmp_path,monkeypa
         assert c.post('/api/research-agent/runs',json={'question':'同时运行','task_id':1}).status_code==409
         cancelled=c.post('/api/research-agent/runs/'+run['id']+'/cancel').json()
         assert cancelled['status']=='cancelled' and not a.JOBS
+        assert cancelled['steps'][-1]['status'] == 'cancelled'
+        assert cancelled['steps'][-1]['finished_at']
     async def fail(*args):raise RuntimeError('模型服务未就绪')
     monkeypatch.setattr(a,'model',fail)
     record={'id':'d'*32,'request':{'task_id':1,'question':'失败测试','mode':'single'},'status':'running','trace':[]}
@@ -106,3 +116,16 @@ def test_generation_grammar_avoids_large_repetition_but_validation_remains():
     assert a.Report.model_json_schema()['properties']['conclusion']['maxLength']==4000
     with pytest.raises(ValidationError):
         a.Report(conclusion='x'*4001,evidence=[],limitations=['边界'],next_steps=[])
+
+
+
+@pytest.mark.parametrize('stored_status', ['running', 'interrupted'])
+def test_history_marks_abandoned_step_without_inventing_end_time(tmp_path, monkeypatch, stored_status):
+    monkeypatch.setattr(store, 'DATA', tmp_path)
+    run_id = '9' * 32
+    step = dict(key='report', label='生成报告', started_at='2026-11-17T08:00:00Z', finished_at=None, status='running')
+    a.save(dict(id=run_id, stage='生成报告', status=stored_status, steps=[step], trace=[]))
+    result = a.result(run_id)
+    assert result['status'] == 'interrupted'
+    assert result['steps'] == [dict(step, status='interrupted')]
+    assert asyncio.run(a.cancel(run_id))['steps'] == result['steps']

@@ -1,8 +1,9 @@
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
-const {chromium}=require('/private/tmp/gcs-browser-check/node_modules/playwright');
-(async()=>{const browser=await chromium.launch({headless:true,timeout:30000}),page=await browser.newPage({viewport:{width:1440,height:1050}}),out=path.resolve(__dirname,'../../outputs/research-agent-acceptance'),errors=[];fs.mkdirSync(out,{recursive:true});page.on('pageerror',e=>errors.push(e.message));page.setDefaultNavigationTimeout(120000);
+const {chromium}=require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+(async()=>{const browser=await chromium.launch({headless:true,timeout:30000,executablePath:process.env.CHROMIUM_EXECUTABLE}),page=await browser.newPage({viewport:{width:1440,height:1050}}),out=path.resolve(__dirname,'../../outputs/research-agent-acceptance'),errors=[];fs.mkdirSync(out,{recursive:true});page.on('pageerror',e=>errors.push(e.message));page.setDefaultNavigationTimeout(120000);
 try{
- await page.goto('http://127.0.0.1:8879/network/agents');await page.waitForFunction(()=>document.querySelector('#model-status').textContent.includes('可开始研究'),{},{timeout:90000});
+ await page.goto((process.env.AGENT_BASE_URL || 'http://127.0.0.1:8879') + '/network/agents');await page.waitForFunction(()=>document.querySelector('#model-status').textContent.includes('可开始研究'),{},{timeout:90000});
+ await page.locator('.scope-controls > summary').click();await page.locator('#workflow').selectOption('research');
  await page.locator('#task').selectOption('3');await page.locator('#mode').selectOption('review');await page.locator('#question').fill('只运行实验 3-0，预算为 6。比较贪心与穷举覆盖格数，说明能否推广到真实网络。回答简短，每段一句。');
  await page.screenshot({path:path.join(out,'before.png'),fullPage:true});await page.locator('#run').click();
  await page.waitForFunction(()=>document.querySelector('#stage').textContent.includes('研究流程完成')||document.querySelector('#stage').textContent.includes('执行失败'),{},{timeout:750000});
