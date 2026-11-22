@@ -3,10 +3,10 @@ import re
 import threading
 import uuid
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 
-from . import store, twin_experiment as twin
+from . import store, twin_experiment as twin, twin_segment
 from .scene_service import scene_for
 
 router = APIRouter()
@@ -57,6 +57,11 @@ def history():
 @router.get('/api/twin-experiments/{experiment_id}')
 def detail(experiment_id: str):
     return load(experiment_id)
+
+
+@router.get('/api/twin-experiments/{experiment_id}/segment')
+def segment(experiment_id: str, start: int = Query(ge=0), end: int = Query(ge=0)):
+    return twin_segment.analyze(load(experiment_id), start, end)
 
 
 @router.post('/api/twin-experiments/{experiment_id}/recompute')

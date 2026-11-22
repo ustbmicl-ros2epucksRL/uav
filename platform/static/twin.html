@@ -11,7 +11,7 @@
 <div class="twin-layout">
 <main>
 <div class="context" id="context"></div>
-<p class="evidence-banner">证据等级：合成孪生。场景、设备参数和参考轨迹均为合成数据，结论用于说明研究内容之间的关系和必要性，不是外场精度，也不是现场验收。</p>
+<p class="evidence-banner">合成孪生 · 设备、建筑与参考航线均来自模型。航段结果用于比较规划方法，现场精度与空域体积覆盖率需分别验证。</p>
 <p id="status" role="status">正在读取实验档案…</p>
 
 <section class="card" id="settings">
@@ -26,6 +26,53 @@
 <p id="repro" class="muted"></p>
 </section>
 
+<section class="card" id="replay">
+<h2>建筑区航段对照</h2>
+<fieldset id="segment-picker" disabled>
+<legend>选择参考航段</legend>
+<form id="segment-form" class="settings-row segment-controls">
+<label class="grow">现有部署的缺测与定位异常段<select id="segment-preset"><option>等待实验档案</option></select></label>
+<label>开始（s）<input id="segment-start" type="number" min="0" step="1" required></label>
+<label>结束（s）<input id="segment-end" type="number" min="0" step="1" required></label>
+<button type="submit" class="secondary">查看航段</button>
+</form>
+</fieldset>
+<p id="segment-status" role="status" class="muted small"></p>
+<div id="segment-result" hidden>
+<h3 id="segment-title"></h3>
+<p id="segment-diagnosis"></p>
+<div id="segment-metrics" class="table-wrap"></div>
+<p id="segment-conclusion" class="segment-conclusion"></p>
+<p class="muted small" id="segment-criterion"></p>
+<div class="actions segment-actions">
+<a id="station-segment">在地面站回放此段</a>
+<a id="assist-segment">在底部助手查看证据</a>
+</div>
+</div>
+<h3>航段回放</h3>
+<div class="settings-row">
+<label>主方案<select id="primary"></select></label>
+<label>对照方案<select id="compare"></select></label>
+<label class="grow">时刻 <span id="time-label"></span><input id="time" type="range" min="0" max="0" value="0"></label>
+<div class="play"><button id="play" class="secondary">播放</button></div>
+</div>
+<div class="replay-grid">
+<div><canvas id="map" width="760" height="620" aria-label="建筑物、站址和选定航段"></canvas><p class="muted small">点击图中航线可选择主方案中状态与原因相同的连续航段。也可在上方输入起止时刻。</p><div class="legend" id="legend"></div></div>
+<div>
+<h3>各方案状态条</h3><canvas id="strips" width="640" height="150"></canvas>
+<h3>理论误差界与模拟定位误差</h3><canvas id="errors" width="640" height="230"></canvas>
+<p class="muted small">实线：主方案 CRLB；点：主方案模拟误差中位数；灰线：对照方案 CRLB；虚线：误差门限。超出上限的值画在顶部。</p>
+<div class="table-wrap" id="sample"></div>
+</div>
+</div>
+</section>
+
+<section class="card">
+<h2>各方案异常航段</h2>
+<label class="inline">方案<select id="segment-deployment"></select></label>
+<div class="table-wrap" id="segments"></div>
+</section>
+
 <section class="card">
 <h2>五个子项目的关系与必要性</h2>
 <p class="muted">箭头表示上游结果是下游的输入。每张卡片的“必要性”来自本次实验的反事实对比：去掉该项研究考虑的因素后，把方案放回完整参考环境重新评价。</p>
@@ -38,31 +85,6 @@
 <h2>部署方案对比</h2>
 <p class="muted">理论指标来自探测概率与 CRLB；模拟指标来自成对蒙特卡洛定位（同一种子、同一设备的随机抽样在各方案中相同）。</p>
 <div class="table-wrap" id="deployments"></div>
-</section>
-
-<section class="card" id="replay">
-<h2>同步回放：在哪里缺测、为什么</h2>
-<div class="settings-row">
-<label>主方案<select id="primary"></select></label>
-<label>对照方案<select id="compare"></select></label>
-<label class="grow">时刻 <span id="time-label"></span><input id="time" type="range" min="0" max="0" value="0"></label>
-<div class="play"><button id="play" class="secondary">播放</button></div>
-</div>
-<div class="replay-grid">
-<div><canvas id="map" width="760" height="620"></canvas><div class="legend" id="legend"></div></div>
-<div>
-<h3>各方案状态条</h3><canvas id="strips" width="640" height="150"></canvas>
-<h3>理论误差界与模拟定位误差</h3><canvas id="errors" width="640" height="230"></canvas>
-<p class="muted small">实线：主方案 CRLB；点：主方案模拟误差中位数；灰线：对照方案 CRLB；虚线：误差门限。超出上限的值画在顶部。</p>
-<div class="table-wrap" id="sample"></div>
-</div>
-</div>
-</section>
-
-<section class="card">
-<h2>缺测段解释</h2>
-<label class="inline">方案<select id="segment-deployment"></select></label>
-<div class="table-wrap" id="segments"></div>
 </section>
 
 <section class="card">
@@ -82,15 +104,16 @@
 <textarea id="question" rows="3" placeholder="例如：子项目二的必要性在本实验里得到支持了吗？" maxlength="3000"></textarea>
 <div class="ask-row">
 <label class="check"><input type="checkbox" id="review"> 同模型复核</label>
-<button type="submit" id="send">开始</button>
+<button type="submit" id="send" disabled>开始</button>
 <button type="button" id="stop" class="secondary" hidden>停止</button>
 </div>
 </form>
-<details id="assistant-history"><summary>本页历史会话</summary><div id="runs"></div></details>
+<details id="assistant-history"><summary>本浏览器的历史提问（含其他航段）</summary><div id="runs"></div></details>
 <details><summary>设置与模型状态</summary><div id="model-status" class="small"></div>
 <p class="muted small">助手只能调用只读工具（场景快照、覆盖诊断、规划记录、验算结果、孪生实验、考核指标），不能修改配置、批准任务或控制设备。建议仅以文字给出，不会自动执行。</p></details>
 </aside>
 </div>
+<script src="static/twin-segment.js"></script>
 <script src="static/twin.js"></script>
 </body>
 </html>

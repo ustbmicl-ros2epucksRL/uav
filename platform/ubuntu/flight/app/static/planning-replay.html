@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>建筑区选段回放 · 区域地面站</title>
+    <link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css">
+    <link rel="stylesheet" href="/static/gcs.css">
+    <link rel="stylesheet" href="/static/planning-replay.css">
+    <script defer src="/static/vendor/leaflet/leaflet.js"></script>
+    <script defer src="/static/planning-replay.js"></script>
+</head>
+<body class="planning-replay">
+    <header>
+        <a class="brand" href="/station">区域地面站</a>
+        <h1>建筑区选段回放</h1>
+        <nav aria-label="回放导航"><a id="back-planning" href="/network/twin">返回规划分析</a></nav>
+    </header>
+    <p id="replay-status" role="status">正在读取合成实验档案…</p>
+    <main id="replay-panel" hidden>
+        <section class="replay-chart" aria-label="合成航线回放">
+            <div id="replay-map" aria-label="冻结建筑轮廓、参考航线、选定航段及当前采样点"></div>
+            <p class="map-key"><span>参考航线</span><span>选定航段</span><span>当前采样点</span></p>
+            <div class="replay-controls">
+                <button id="replay-play" type="button" class="primary">播放</button>
+                <label for="replay-index">回放进度</label>
+                <input id="replay-index" type="range" step="1">
+                <output id="replay-time" for="replay-index"></output>
+            </div>
+        </section>
+        <aside class="replay-details">
+            <h2>合成参考航线</h2>
+            <p id="replay-track"></p>
+            <p id="replay-position"></p>
+            <h2>本采样点的理论定位</h2>
+            <p id="replay-threshold"></p>
+            <dl id="replay-comparison"></dl>
+            <p id="replay-id" class="hint"></p>
+            <a id="replay-assistant" href="/?platform=planning">在助手中查看选段证据</a>
+        </aside>
+    </main>
+</body>
+</html>

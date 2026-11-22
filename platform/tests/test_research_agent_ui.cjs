@@ -262,3 +262,67 @@ test('a management workflow link prepares a draft and an invalid run link stays 
         assert.equal(s.calls.filter(c => c.options.method === 'POST' || c.url.includes('/runs/')).length, 0);
     }
 });
+
+function archivedSegment(s) {
+    const id = 'f'.repeat(32);
+    const ref = {experiment_id:id, start:2, end:5};
+    const send = (data, origin=s.context.location.origin) => s.events.message({origin, source:s.context.window.parent,
+        data:{type:'workbench-twin-segment',experimentId:id,start:2,end:5,...data}});
+    const archive = {id, evidence_level:'synthetic_twin', created_at:'2026-11-21', input_digest:'input',result_digest:'result',
+        inputs:{trajectory:{id:'UAV-002-LOW'}},result:{deployments:[{key:'method',planning_history:[{step:'compare',rule:'同预算选址'}]}]}};
+    const data = {...ref,start_s:2,end_s:5,sample_count:4,dt_s:1,precision_m:30,budget:50,input_digest:'input',result_digest:'result',
+        deployments:[{key:'method',label:'完整方案',added_cost:46,pass_count:3,blind_count:1,longest_gap_s:1,
+            causes:[{cause:'建筑遮挡',samples:1}]}], comparisons:[]};
+    const base = s.context.fetch;
+    s.context.fetch = async (url,options={}) => {
+        if (!url.includes('/api/twin-experiments/') && !url.includes('/runs?')) return base(url,options);
+        s.calls.push({url,options});
+        const response = url.includes('/api/twin-experiments/') ? archive : {runs:[
+            {id:'other',request:{question:'其他选段',twin_segment:{...ref,end:6}}},
+            {id:'chosen',request:{workflow:'platform',scene:'urban',question:'本段记录',twin_segment:ref}}]};
+        return {ok:true,json:async()=>response};
+    };
+    s.context.window.TwinSegment = {analyze:async()=>data};
+    return {id,ref,data,send};
+}
+
+test('an archived selection scopes the evidence, history and next analysis without submitting the draft',async()=>{
+    const s=setup('/network/agents','?embed=1&layout=dock');
+    await ready();
+    const t=archivedSegment(s);
+    t.send({},'https://other.test');
+    t.send({experimentId:'../outside'});
+    t.send({start:-1});
+    assert.equal(s.calls.filter(c=>c.url.includes('/twin-experiments/')).length,0);
+    t.send({});
+    await ready();
+    assert.match(s.get('segment-label').textContent,/2–5 秒/);
+    assert.match(s.get('segment-status').textContent,/合成孪生/);
+    assert(s.get('segment-evidence').children.some(row=>row.textContent.includes('3/4')));
+    assert(s.get('segment-evidence').children.some(row=>row.href==='/network/api/twin-experiments/'+t.id+'/segment?start=2&end=5'));
+    assert(s.get('segment-history').children.some(row=>row.textContent.includes('尚无复算记录')));
+    assert(s.get('history').children.some(row=>row.value==='chosen'));
+    assert(!s.get('history').children.some(row=>row.value==='other'));
+    assert(s.calls.some(c=>c.url.endsWith('/runs/chosen')));
+    assert.equal(s.get('question').value,'检查廊道');
+    assert.equal(s.calls.filter(c=>c.options.method==='POST').length,0);
+    await s.get('run').onclick();
+    const body=JSON.parse(s.calls.find(c=>c.options.method==='POST').options.body);
+    assert.deepEqual(body.twin_segment,t.ref);
+    assert.deepEqual([body.scene,body.workflow,body.skill],['urban','platform','twin_experiment']);
+    s.get('clear-segment').onclick();
+    assert.equal(s.get('segment-panel').hidden,true);
+});
+
+test('a mismatched archived digest prevents analysis under an unverified selection',async()=>{
+    const s=setup('/network/agents','?embed=1&layout=dock');
+    await ready();
+    const t=archivedSegment(s);
+    t.data.result_digest='changed';
+    t.send({});
+    await ready();
+    assert.match(s.get('segment-status').textContent,/不一致/);
+    assert.equal(s.get('run').disabled,true);
+    await s.get('run').onclick();
+    assert.equal(s.calls.filter(c=>c.options.method==='POST').length,0);
+});

@@ -1,5 +1,8 @@
 const root = location.pathname.startsWith('/network') ? '/network' : '';
 const $ = id => document.getElementById(id);
+const workbench = window.parent !== window && (window.frameElement?.dataset.frame === 'planning' ||
+    new URLSearchParams(location.search).get('workbench') === '1');
+if (workbench) document.body.classList.add('workbench-embedded');
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 const pct = v => v == null ? '—' : (v * 100).toFixed(1) + '%';
 const meters = v => v == null ? '—' : v.toFixed(1) + ' m';
@@ -10,6 +13,7 @@ const STATE = {
 const TYPE_COLOR = {RADAR: '#5dade2', EO: '#f5b041', RF: '#af7ac5', IR: '#ec7063'};
 const POINT_VIEW = {1: ['ignore_occlusion', 'method'], 2: ['ignore_interference', 'method'], 3: ['method', 'baseline'], 4: ['method', 'baseline'], 5: ['method', 'baseline']};
 let record = null, selectedPoint = 1, timer = null, run = null, poll = null;
+let segmentRange = null, recordRevision = 0, segmentRevision = 0;
 const session = localStorage.getItem('twin-session') || (() => {
     const id = Array.from(crypto.getRandomValues(new Uint8Array(8)), b => b.toString(16).padStart(2, '0')).join('');
     localStorage.setItem('twin-session', id);
@@ -41,20 +45,31 @@ async function loadHistory(selected) {
     return experiments;
 }
 
-async function open(id) {
+async function open(id, range) {
+    const revision = ++recordRevision;
     status('正在读取实验…');
-    record = await api('/api/twin-experiments/' + id);
-    render();
+    const archive = await api('/api/twin-experiments/' + id);
+    if (revision !== recordRevision) return;
+    record = archive;
+    if (!Array.from($('history').options).some(option => option.value === id)) {
+        $('history').add(new Option(`${archive.created_at} · ${id.slice(0, 8)}`, id));
+    }
+    $('history').value = id;
+    render(range);
     status(record.scene_changed ? '场景已在实验后修改；本页显示的是冻结输入下的结果，需要时请重新运行。' : '实验已加载。');
 }
 
 async function runExperiment() {
     $('run').disabled = true;
     status('正在计算：规划四种部署并做成对蒙特卡洛评价…');
+    const revision = ++recordRevision;
     try {
         const body = {scene: 'urban', budget: +$('budget').value, seed_count: +$('seeds').value, precision_m: +$('precision').value};
-        record = await api('/api/twin-experiments', {method: 'POST', body: JSON.stringify(body)});
+        const archive = await api('/api/twin-experiments', {method: 'POST', body: JSON.stringify(body)});
+        if (revision !== recordRevision) return;
+        record = archive;
         await loadHistory(record.id);
+        if (revision !== recordRevision) return;
         render();
         status('实验完成并已存档。');
     } catch (error) {
@@ -66,14 +81,16 @@ async function runExperiment() {
 
 async function recompute() {
     if (!record) return;
+    const archive = record;
     $('recompute').disabled = true;
     status('正在从冻结输入复算…');
     try {
-        record.reproducibility = await api(`/api/twin-experiments/${record.id}/recompute`, {method: 'POST'});
+        archive.reproducibility = await api(`/api/twin-experiments/${archive.id}/recompute`, {method: 'POST'});
+        if (archive !== record) return;
         renderRepro();
         status(record.reproducibility.matches ? '复算结果与存档一致。' : '复算结果与存档不一致，请检查模型版本。', !record.reproducibility.matches);
     } catch (error) {
-        status('复算失败：' + error.message, true);
+        if (archive === record) status('复算失败：' + error.message, true);
     } finally {
         $('recompute').disabled = false;
     }
@@ -85,14 +102,14 @@ function renderRepro() {
         (check ? ` · ${escapeHtml(check.checked_at)} 复算${check.matches && check.input_matches ? '<b class="pass"> 一致</b>' : '<b class="fail"> 不一致</b>'}` : ' · 尚未复算核对');
 }
 
-function render() {
+function render(range) {
     const inputs = record.inputs;
     $('context').innerHTML = [
         ['系统', '感知网络规划'], ['场景', `${escapeHtml(inputs.scene.name || inputs.scene.id)}（版本 ${inputs.scene_revision}）`],
         ['实验', record.id.slice(0, 8)], ['指标版本', inputs.kpi_version], ['覆盖模型', inputs.model_version],
-        ['参考轨迹', `${escapeHtml(inputs.trajectory.id)}，${inputs.trajectory.points.length} s`], ['证据等级', '合成孪生'],
+        ['参考轨迹', `${escapeHtml(inputs.trajectory.id)}，${inputs.trajectory.points.length} 个采样点`], ['证据等级', '合成孪生'],
     ].map(([k, v]) => `<span>${k} <b>${v}</b></span>`).join('');
-    $('assistant-context').textContent = `场景：建筑区 · 实验 ${record.id.slice(0, 8)} · 助手读取最近一次实验摘要与考核指标，只读不改。`;
+    $('assistant-context').textContent = '请选择已归档的航段。';
     $('budget').value = inputs.budget;
     $('seeds').value = inputs.seeds.length;
     $('precision').value = inputs.environment.precision_m;
@@ -101,9 +118,10 @@ function render() {
     renderTable();
     const options = record.result.deployments.map(row => `<option value="${row.key}">${escapeHtml(row.label)}</option>`).join('');
     for (const id of ['primary', 'compare', 'segment-deployment']) $(id).innerHTML = options;
-    $('primary').value = 'method';
-    $('compare').value = 'baseline';
+    $('primary').value = 'baseline';
+    $('compare').value = 'method';
     $('segment-deployment').value = 'baseline';
+    $('time').min = 0;
     $('time').max = inputs.trajectory.points.length - 1;
     $('time').value = 0;
     $('limitations').innerHTML = record.result.limitations.map(item => `<li>${escapeHtml(item)}</li>`).join('');
@@ -111,18 +129,28 @@ function render() {
         Object.entries(TYPE_COLOR).slice(0, 3).map(([type, color]) => `<span><i style="background:${color};border-radius:50%"></i>${type}</span>`).join('') +
         '<span><i style="border:2px solid #fff;background:transparent;border-radius:50%"></i>新增设备</span>';
     renderSegments();
-    draw();
+    prepareSegment(range);
 }
 
-function supported(point) {
-    return !/未得到支持|无法判断/.test(point.necessity);
+function verdict(point) {
+    if (point.id === 1 || point.id === 2) {
+        const method = deployment('method').metrics;
+        const other = deployment(point.id === 1 ? 'ignore_occlusion' : 'ignore_interference').metrics;
+        const rateGain = method.theoretical_pass - other.theoretical_pass;
+        const gapGain = other.longest_gap_theoretical_s - method.longest_gap_theoretical_s;
+        if (rateGain >= 0 && gapGain >= 0 && (rateGain > 0 || gapGain > 0)) return '本航线对照显示改善';
+        if (rateGain <= 0 && gapGain <= 0) return '本航线未显示改善';
+        return '两项指标变化方向不同';
+    }
+    if (point.id === 3) return '待补同预算人工选址对照';
+    return point.evidence_level;
 }
 
 function renderChain() {
     const points = record.result.research_points;
     $('chain').innerHTML = points.map((p, i) => `${i ? '<span class="arrow">→</span>' : ''}<button class="point ${p.id === selectedPoint ? 'active' : ''}" data-point="${p.id}">
         <small>${escapeHtml(p.subproject)}</small><strong>${escapeHtml(p.title)}</strong>
-        <span class="verdict ${p.id <= 3 ? (supported(p) ? 'supported' : 'unsupported') : ''}">${p.id <= 3 ? (supported(p) ? '本实验支持其必要性' : '本实验未支持') : escapeHtml(p.evidence_level)}</span></button>`).join('');
+        <span class="verdict">${escapeHtml(verdict(p))}</span></button>`).join('');
     $('relations').innerHTML = record.result.relations.map(r => `<li>子项目${'一二三四五'[r.source - 1]} → 子项目${'一二三四五'[r.target - 1]}：${escapeHtml(r.meaning)}</li>`).join('');
     const p = points.find(item => item.id === selectedPoint);
     $('point-detail').innerHTML = `<h3>${escapeHtml(p.subproject)} · ${escapeHtml(p.title)}</h3><dl>
@@ -143,7 +171,11 @@ function renderChain() {
         $('replay').scrollIntoView({behavior: 'smooth'});
     };
     $('ask-point').onclick = () => {
-        $('question').value = `${p.subproject}「${p.title}」的必要性在最近一次孪生实验里得到支持了吗？请引用对比方案的数值，并说明还缺哪些证据。`;
+        if (workbench) {
+            $('assist-segment').click();
+            return;
+        }
+        $('question').value = `${p.subproject}「${p.title}」在所选航段上有哪些对照证据？请引用方案数值并说明验证边界。`;
         $('question').focus();
     };
 }
@@ -166,8 +198,147 @@ function renderSegments() {
     const row = deployment($('segment-deployment').value);
     $('segments').innerHTML = row.segments.length ? table(['时段', '时长', '原因', '位置 (x, y, z)', ''],
         row.segments.map((s, i) => [`${s.start}–${s.end} s`, s.duration_s + ' s', `<span style="color:${STATE[s.state][0]}">●</span> ${escapeHtml(s.cause)}`,
-            s.position.map(v => Math.round(v)).join(', '), `<button class="secondary" data-segment="${i}">定位到回放</button>`]))
+            s.position.map(v => Math.round(v)).join(', '), `<button class="secondary" data-segment="${i}">查看此段</button>`]))
         : '<p class="empty">该方案在参考轨迹上没有理论缺测段。</p>';
+}
+
+function prepareSegment(range) {
+    const times = record.inputs.trajectory.times;
+    const last = times.length - 1;
+    ++segmentRevision;
+    segmentRange = null;
+    $('segment-result').hidden = true;
+    $('send').disabled = true;
+    if (timer) togglePlay();
+    $('segment-picker').disabled = false;
+    $('segment-end').min = $('segment-start').min = times[0];
+    $('segment-end').max = $('segment-start').max = times[last];
+    const preset = $('segment-preset');
+    preset.replaceChildren(new Option('整条参考航线', `0,${last}`));
+    for (const segment of deployment('baseline').segments) {
+        preset.add(new Option(`${segment.start}–${segment.end} s · ${segment.cause}`,
+            `${times.indexOf(segment.start)},${times.indexOf(segment.end)}`));
+    }
+    preset.add(new Option('自选起止时刻', 'custom'));
+    if (range && (![range.start, range.end].every(value => /^\d+$/.test(value)) ||
+            +range.start > +range.end || +range.end > last)) {
+        $('segment-start').value = times[0];
+        $('segment-end').value = times[last];
+        $('segment-status').textContent = '链接中的航段超出档案范围，请重新选择。';
+        draw();
+        return;
+    }
+    selectSegment(range ? +range.start : 0, range ? +range.end : last);
+}
+
+function segmentLinks(start, end) {
+    const station = new URL('/station', location.origin);
+    station.search = new URLSearchParams({twin_experiment: record.id, start, end});
+    const chat = new URL('/', location.origin);
+    chat.search = new URLSearchParams({platform: 'planning', experiment: record.id, start, end, assistant: 1});
+    $('station-segment').href = station.href;
+    $('assist-segment').href = chat.href;
+    document.querySelector('.segment-actions').hidden = !root;
+}
+
+async function selectSegment(start, end) {
+    const times = record.inputs.trajectory.times;
+    if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || start > end || end >= times.length) {
+        $('segment-status').textContent = '请在本条航线的采样范围内选择起止时刻。';
+        return;
+    }
+    const revision = ++segmentRevision;
+    const selected = record;
+    segmentRange = {start, end};
+    if (timer) togglePlay();
+    const preset = $('segment-preset');
+    const key = `${start},${end}`;
+    preset.value = Array.from(preset.options).some(option => option.value === key) ? key : 'custom';
+    $('segment-start').value = times[start];
+    $('segment-end').value = times[end];
+    $('time').min = start;
+    $('time').max = end;
+    $('time').value = start;
+    const url = new URL(location.href);
+    url.searchParams.set('experiment', record.id);
+    url.searchParams.set('start', start);
+    url.searchParams.set('end', end);
+    window.history.replaceState(null, '', url);
+    $('segment-status').textContent = '正在核对选定航段…';
+    $('send').disabled = true;
+    $('segment-result').hidden = true;
+    draw();
+    try {
+        const report = await TwinSegment.analyze(selected, start, end);
+        if (revision !== segmentRevision || selected !== record) return;
+        renderSegmentReport(report);
+        segmentLinks(start, end);
+        $('segment-status').textContent = '';
+        $('segment-result').hidden = false;
+        $('assistant-context').textContent = `建筑区 · 实验 ${record.id.slice(0, 8)} · ${report.start_s}–${report.end_s} s。新提问引用本航段。`;
+        $('send').disabled = false;
+    } catch (error) {
+        if (revision === segmentRevision && selected === record) {
+            $('segment-status').textContent = '航段分析未加载，请重试。' + error.message;
+        }
+    }
+}
+
+function renderSegmentReport(report) {
+    const baseline = report.deployments.find(item => item.key === 'baseline');
+    const method = report.deployments.find(item => item.key === 'method');
+    $('segment-title').textContent = `${report.start_s}–${report.end_s} s · ${report.sample_count} 个航迹采样点`;
+    const summary = baseline.causes.map(c => `${c.cause} ${c.samples} 点`).join('、');
+    $('segment-diagnosis').textContent = summary
+        ? `现有部署有 ${baseline.blind_count} 个探测盲点，${report.sample_count - baseline.pass_count} 个点未满足理论定位门槛。模型归因包括${summary}。`
+        : '按当前模型，现有部署在所选航段均可探测且满足理论定位门槛。';
+    const rows = report.deployments.map(item => {
+        const cause = item.causes.map(c => `${escapeHtml(c.cause)}（${c.samples} 点）`).join('、');
+        return [escapeHtml(item.label), `${item.added_devices} 台 / ${item.added_cost} 万元`,
+            item.blind_count, `${item.pass_count}/${report.sample_count}（${pct(item.theoretical_pass)}）`,
+            `${item.longest_gap_s} s`, cause || '均合格'];
+    });
+    $('segment-metrics').innerHTML = table(['布站方案', '全方案新增设备 / 费用', '探测盲点数', '理论定位合格点', '最长连续不合格', '模型归因'], rows,
+        report.deployments.map(item => item.key === 'method' ? 'method' : ''));
+    const deltas = report.comparisons.filter(c => c.key !== 'baseline').map(c => {
+        const other = report.deployments.find(item => item.key === c.key);
+        const name = other.label.replace('反事实：', '');
+        const cost = c.equal_cost ? `两方案同为 ${method.added_cost} 万元` : `两方案分别为 ${method.added_cost}、${other.added_cost} 万元`;
+        const rate = c.pass_delta_pp === 0 ? '持平' : `${c.pass_delta_pp > 0 ? '高' : '低'} ${Math.abs(c.pass_delta_pp).toFixed(1)} 个百分点`;
+        const gap = c.gap_reduction_s === 0 ? '持平' : `${c.gap_reduction_s > 0 ? '缩短' : '延长'} ${Math.abs(c.gap_reduction_s)} s`;
+        return `与「${name}」相比，${cost}，完整模型的合格比例${rate}，最长不合格时长${gap}。`;
+    });
+    $('segment-conclusion').replaceChildren(...deltas.map(text => {
+        const paragraph = document.createElement('span');
+        paragraph.textContent = text;
+        return paragraph;
+    }));
+    $('segment-criterion').textContent = `使用相同航线和 ${report.budget} 万元新增预算上限，定位门槛 ${report.precision_m} m。合格比例按航段采样点统计，连续时长按每点 ${report.dt_s} s 累计。`;
+}
+
+$('segment-preset').addEventListener('change', event => {
+    if (!record) return;
+    if (event.target.value === 'custom') {
+        $('segment-start').focus();
+        return;
+    }
+    const [start, end] = event.target.value.split(',').map(Number);
+    $('primary').value = 'baseline';
+    $('compare').value = 'method';
+    selectSegment(start, end);
+});
+$('segment-form').addEventListener('submit', event => {
+    event.preventDefault();
+    if (!record) return;
+    const times = record.inputs.trajectory.times;
+    selectSegment(times.indexOf($('segment-start').valueAsNumber), times.indexOf($('segment-end').valueAsNumber));
+});
+for (const [id, action] of [['assist-segment', 'assistant'], ['station-segment', 'station']]) {
+    $(id).addEventListener('click', event => {
+        if (!workbench || !record || !segmentRange || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+        event.preventDefault();
+        window.parent.postMessage({type: 'workbench-twin-segment', experimentId: record.id, ...segmentRange, action}, location.origin);
+    });
 }
 
 function bounds() {
@@ -179,11 +350,15 @@ function bounds() {
     return {x0: Math.min(...xs) - 40, x1: Math.max(...xs) + 40, y0: Math.min(...ys) - 40, y1: Math.max(...ys) + 40};
 }
 
-function drawMap(t) {
-    const canvas = $('map'), ctx = canvas.getContext('2d');
+function mapProjection(canvas) {
     const b = bounds(), pad = 16;
     const scale = Math.min((canvas.width - 2 * pad) / (b.x1 - b.x0), (canvas.height - 2 * pad) / (b.y1 - b.y0));
-    const X = x => pad + (x - b.x0) * scale, Y = y => canvas.height - pad - (y - b.y0) * scale;
+    return {scale, X: x => pad + (x - b.x0) * scale, Y: y => canvas.height - pad - (y - b.y0) * scale};
+}
+
+function drawMap(t) {
+    const canvas = $('map'), ctx = canvas.getContext('2d');
+    const {scale, X, Y} = mapProjection(canvas);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     const scene = record.inputs.scene;
     for (const bd of scene.buildings) {
@@ -214,8 +389,9 @@ function drawMap(t) {
     }
     const points = record.inputs.trajectory.points;
     for (let i = 1; i < points.length; i++) {
-        ctx.strokeStyle = STATE[primary.timeline[i].state][0];
-        ctx.lineWidth = 4;
+        const inRange = segmentRange && i > segmentRange.start && i <= segmentRange.end;
+        ctx.strokeStyle = inRange ? STATE[primary.timeline[i].state][0] : '#607584';
+        ctx.lineWidth = inRange ? 4 : 1.5;
         ctx.beginPath();
         ctx.moveTo(X(points[i - 1][0]), Y(points[i - 1][1]));
         ctx.lineTo(X(points[i][0]), Y(points[i][1]));
@@ -249,6 +425,11 @@ function drawStrips(t) {
             ctx.fillRect(left + i * w, r * h + 6, Math.ceil(w), h - 6);
         });
     });
+    if (segmentRange) {
+        ctx.fillStyle = 'rgba(247,250,252,.72)';
+        ctx.fillRect(left, 0, segmentRange.start * w, canvas.height);
+        ctx.fillRect(left + (segmentRange.end + 1) * w, 0, (n - segmentRange.end - 1) * w, canvas.height);
+    }
     ctx.strokeStyle = '#112e43';
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -305,7 +486,7 @@ function drawSample(t) {
 function draw() {
     if (!record) return;
     const t = +$('time').value;
-    $('time-label').textContent = `${t} s / ${record.inputs.trajectory.points.length - 1} s`;
+    $('time-label').textContent = `${record.inputs.trajectory.times[t]} s`;
     drawMap(t);
     drawStrips(t);
     drawErrors(t);
@@ -314,16 +495,17 @@ function draw() {
 
 function jumpToDifference() {
     const a = deployment($('primary').value).timeline, b = deployment($('compare').value).timeline;
-    const i = a.findIndex((s, k) => s.state !== b[k].state);
-    $('time').value = i < 0 ? 0 : i;
+    const i = a.findIndex((s, k) => k >= +$('time').min && k <= +$('time').max && s.state !== b[k].state);
+    $('time').value = i < 0 ? $('time').min : i;
     draw();
 }
 
 function togglePlay() {
+    if (!record) return;
     if (timer) { clearInterval(timer); timer = null; $('play').textContent = '播放'; return; }
     $('play').textContent = '暂停';
     timer = setInterval(() => {
-        const next = (+$('time').value + 1) % (+$('time').max + 1);
+        const next = +$('time').value < +$('time').max ? +$('time').value + 1 : +$('time').min;
         $('time').value = next;
         draw();
     }, 250);
@@ -340,15 +522,38 @@ $('segments').addEventListener('click', event => {
     if (!button) return;
     const segment = deployment($('segment-deployment').value).segments[+button.dataset.segment];
     $('primary').value = $('segment-deployment').value;
-    $('time').value = segment.start;
-    draw();
+    const times = record.inputs.trajectory.times;
+    selectSegment(times.indexOf(segment.start), times.indexOf(segment.end));
     $('replay').scrollIntoView({behavior: 'smooth'});
 });
+$('map').addEventListener('click', event => {
+    if (!record) return;
+    const canvas = $('map');
+    const rect = canvas.getBoundingClientRect();
+    const {X, Y} = mapProjection(canvas);
+    let index = -1, nearest = 18;
+    record.inputs.trajectory.points.forEach(([x, y], i) => {
+        const screenX = rect.left + X(x) * rect.width / canvas.width;
+        const screenY = rect.top + Y(y) * rect.height / canvas.height;
+        const distance = Math.hypot(screenX - event.clientX, screenY - event.clientY);
+        if (distance < nearest) { nearest = distance; index = i; }
+    });
+    if (index < 0) return;
+    const {timeline} = deployment($('primary').value);
+    const target = timeline[index];
+    const same = item => item && item.state === target.state && item.cause === target.cause;
+    let start = index, end = index;
+    while (same(timeline[start - 1])) start--;
+    while (same(timeline[end + 1])) end++;
+    selectSegment(start, end);
+});
 $('strips').addEventListener('click', event => {
+    if (!record) return;
     const rect = event.target.getBoundingClientRect(), n = record.inputs.trajectory.points.length;
     const x = (event.clientX - rect.left) * event.target.width / rect.width;
     if (x < 150) return;
-    $('time').value = Math.max(0, Math.min(n - 1, Math.floor((x - 150) / ((event.target.width - 156) / n))));
+    const index = Math.floor((x - 150) / ((event.target.width - 156) / n));
+    $('time').value = Math.max(+$('time').min, Math.min(+$('time').max, index));
     draw();
 });
 $('time').addEventListener('input', draw);
@@ -383,7 +588,7 @@ function duration(step) {
 
 function reportHtml(report, title) {
     if (!report) return '';
-    return `<p><b>${title}</b></p><p>${escapeHtml(report.conclusion)}</p>
+    return `<p><b>${title}</b></p>${report.numeric_source === 'archived_twin_segment' ? '<p class="muted small">定量结论来自本段归档采样，验证建议由助手生成。</p>' : ''}<p>${escapeHtml(report.conclusion)}</p>
         ${report.evidence?.length ? `<p class="small"><b>依据</b></p><ul class="small">${report.evidence.map(e => `<li>${escapeHtml(e)}</li>`).join('')}</ul>` : ''}
         ${report.limitations?.length ? `<p class="small"><b>局限</b></p><ul class="small">${report.limitations.map(e => `<li>${escapeHtml(e)}</li>`).join('')}</ul>` : ''}
         ${report.next_steps?.length ? `<div class="suggestions"><b>建议（未执行，需人工决定）</b><ul class="small">${report.next_steps.map(e => `<li>${escapeHtml(e)}</li>`).join('')}</ul></div>` : ''}
@@ -394,7 +599,9 @@ function runHtml(item) {
     const steps = item.steps || [];
     const evidence = (item.trace || []).filter(t => t.result && t.result.evidence_id).map(t => t.result);
     const sourceLimits = item.report?.source_limitations || [];
+    const scope = item.request.twin_segment;
     return `<div class="msg-user">${escapeHtml(item.request.question)}</div><div class="msg-agent">
+        <p class="muted small">${scope ? `档案 ${escapeHtml(scope.experiment_id.slice(0, 8))} · 采样点 ${scope.start}–${scope.end}` : '未绑定航段的历史提问'}</p>
         <ul class="steps">${steps.map(s => `<li class="step-${s.status}"><span>${escapeHtml(s.label)}</span><span>${duration(s)}</span></li>`).join('') || `<li class="step-running"><span>${escapeHtml(item.stage)}</span><span></span></li>`}</ul>
         ${evidence.map(e => `<div class="evidence-card"><b>${escapeHtml(e.tool)}</b> · ${escapeHtml(e.provenance)} · <span class="mono">${escapeHtml(e.evidence_id)}</span>
             <details><summary>原始数据（JSON）</summary><pre>${escapeHtml(JSON.stringify(e.data, null, 2))}</pre></details></div>`).join('')}
@@ -409,7 +616,7 @@ const shown = new Map();
 function showRun(item) {
     shown.set(item.id, item);
     $('conversation').innerHTML = [...shown.values()].sort((a, b) => (a.created_at || '').localeCompare(b.created_at || '')).map(runHtml).join('') ||
-        '<p class="muted small">向助手提问。它会冻结当前场景与最近一次孪生实验，选择只读工具取证，再给出带证据编号的回答。</p>';
+        '<p class="muted small">选定航段后可就该段提问，回答将引用归档实验的只读证据。</p>';
     $('conversation').scrollTop = $('conversation').scrollHeight;
 }
 
@@ -438,11 +645,12 @@ async function pollRun(id) {
 $('ask').addEventListener('submit', async event => {
     event.preventDefault();
     const question = $('question').value.trim();
-    if (question.length < 2 || run) return;
+    if (question.length < 2 || run || !record || !segmentRange || $('segment-result').hidden) return;
     busy(true);
     try {
         const item = await api('/api/research-agent/runs', {method: 'POST', body: JSON.stringify({
-            question, workflow: 'platform', scene: 'urban', mode: $('review').checked ? 'review' : 'single', session_id: session})});
+            question, workflow: 'platform', scene: 'urban', skill: 'twin_experiment',
+            twin_segment: {experiment_id: record.id, ...segmentRange}, mode: $('review').checked ? 'review' : 'single', session_id: session})});
         run = item.id;
         $('question').value = '';
         showRun(item);
@@ -486,8 +694,8 @@ async function modelStatus() {
     }
 }
 
-async function start() {
-    $('conversation').innerHTML = '<p class="muted small">向助手提问。它会冻结当前场景与最近一次孪生实验，选择只读工具取证，再给出带证据编号的回答。</p>';
+async function restoreAssistant() {
+    $('conversation').innerHTML = '<p class="muted small">选定航段后可就该段提问，回答将引用归档实验的只读证据。</p>';
     modelStatus();
     const runs = await loadRuns();
     for (const r of runs.slice(0, 3).reverse()) {
@@ -497,9 +705,20 @@ async function start() {
             if (item.status === 'running') { run = item.id; busy(true); pollRun(item.id); }
         } catch (error) { /* skip unreadable record */ }
     }
+}
+
+async function start() {
+    if (!workbench) restoreAssistant();
+    const query = new URLSearchParams(location.search);
+    const id = query.get('experiment');
     try {
-        const experiments = await loadHistory();
-        if (experiments.length) await open(experiments[0].id);
+        const experiments = await loadHistory(id);
+        if (id) {
+            if (!/^[a-f0-9]{32}$/.test(id)) throw new Error('实验编号无效');
+            const range = query.has('start') || query.has('end')
+                ? {start: query.get('start'), end: query.get('end')} : null;
+            await open(id, range);
+        } else if (experiments.length) await open(experiments[0].id);
         else await runExperiment();
     } catch (error) {
         status('无法读取实验档案：' + error.message, true);

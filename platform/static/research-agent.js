@@ -19,6 +19,8 @@ if (['urban','corridor','electromagnetic'].includes(initialScene)) $('scene').va
 let record = null, timer = null, generation = 0;
 let lastPlanningScene = null, pendingPlanningScene = null;
 let selectedSkill = null;
+let segmentRef = null, segmentLoaded = false;
+let busy = false;
 const nav = {tasks:'规划任务',resources:'资源配置',diagnosis:'感知诊断',planning:'网络规划',plans:'方案管理',demonstration:'示范应用',research:'研究问题',agents:'研究智能体','agents/manage':'智能体管理'};
 for (const [key,label] of Object.entries(nav)) {
     const a = document.createElement('a');
@@ -35,7 +37,8 @@ async function api(path, body) {
     return data;
 }
 function controls(active) {
-    $('run').disabled = active; $('cancel').disabled = !active;
+    busy = Boolean(active);
+    $('run').disabled = active || (segmentRef !== null && !segmentLoaded); $('cancel').disabled = !active;
     $('history').disabled = active;
     for (const id of ['workflow','scene','task','mode']) $(id).disabled = active;
     if (docked) {
@@ -62,6 +65,120 @@ const provenanceNames = {
 };
 const workspace = workspaceNames[agentQuery.get('workspace')];
 $('host-context').textContent = workspace || '研究助手';
+
+function sameSegment(ref, other) {
+    return ref && other && ref.experiment_id === other.experiment_id && ref.start === other.start && ref.end === other.end;
+}
+function validSegmentRef({experiment_id, start, end}) {
+    return typeof experiment_id === 'string' && /^[a-f0-9]{32}$/.test(experiment_id) &&
+        Number.isSafeInteger(start) && start >= 0 && Number.isSafeInteger(end) && end >= start;
+}
+function segmentSourceLink(data) {
+    const link = node('a','打开原始选段证据 JSON ↗');
+    link.href = root + '/api/twin-experiments/' + data.experiment_id + '/segment?' +
+        new URLSearchParams({start:data.start, end:data.end});
+    link.target = '_blank';
+    link.rel = 'noopener';
+    return link;
+}
+function updateSegmentScope() {
+    document.body.dataset.segmentScope = !segmentRef ? '' : sameSegment(segmentRef, record?.request?.twin_segment) ? 'match' : 'selected';
+}
+function updateSegmentHistory(restoreRun=false) {
+    refreshHistory(restoreRun).catch(error => { $('history-status').textContent = '历史记录读取失败 · ' + error.message; });
+}
+function clearSegment() {
+    segmentRef = null;
+    segmentLoaded = false;
+    $('segment-panel').hidden = true;
+    updateSegmentScope();
+    controls(busy);
+    updateSegmentHistory();
+    window.parent.postMessage({type:'workbench-clear-twin-segment'}, location.origin);
+}
+function renderSegmentArchive(archive, segment) {
+    const timeline = archive.inputs.trajectory;
+    $('segment-label').textContent = '建筑区 · ' + timeline.id + ' · ' + segment.start_s + '–' + segment.end_s + ' 秒';
+    $('segment-status').textContent = '合成孪生 · ' + segment.sample_count + ' 个采样点 · 档案 ' +
+        archive.id.slice(0,8) + (archive.scene_changed ? ' · 当前场景已有更新，使用归档快照' : '');
+    $('segment-chat').append(node('p','当前提问将引用此选段。可查看执行步骤、同预算证据和本段历史。'));
+    const steps = $('segment-steps');
+    steps.append(node('h3','档案中的规划步骤'));
+    const method = archive.result.deployments.find(row => row.key === 'method');
+    const list = document.createElement('ol');
+    for (const step of method?.planning_history || []) {
+        let label = step.rule;
+        if (step.step !== 'compare') {
+            const operation = {add:'新增', replace:'替换', remove:'移除'}[step.step] || step.step;
+            label = [operation, step.replaced, step.option, '规划合格采样 ' + step.planner_score].filter(Boolean).join(' · ');
+        }
+        list.append(node('li', label));
+    }
+    steps.append(list, node('p',method?.planning_history?.length ?
+        '规划在任务空域采样点上选址，选段用于评价已选部署。' : '此档案未保存逐步选址记录。'));
+
+    const evidence = $('segment-evidence');
+    evidence.append(node('h3','选段证据'), node('p','部署预算上限 ' + segment.budget + ' 万元 · 理论定位门槛 ' +
+        segment.precision_m + ' m · 连续时长按每个采样点 ' + segment.dt_s + ' 秒累计'));
+    for (const plan of segment.deployments) {
+        const row = node('p', plan.label + ' · 理论合格 ' + plan.pass_count + '/' + segment.sample_count +
+            ' · 探测盲点 ' + plan.blind_count + ' 个 · 最长连续不合格 ' + plan.longest_gap_s + ' 秒 · 新增 ' + plan.added_cost + ' 万元');
+        evidence.append(row);
+        if (plan.causes.length) evidence.append(node('p', plan.causes.map(item => item.cause + ' ' + item.samples + ' 点').join('，')));
+    }
+    const byKey = new Map(segment.deployments.map(plan => [plan.key, plan.label]));
+    for (const comparison of segment.comparisons) {
+        if (!comparison.equal_cost) continue;
+        const delta = comparison.gap_reduction_s;
+        const gap = delta > 0 ? '缩短 ' + delta + ' 秒' : delta < 0 ? '延长 ' + -delta + ' 秒' : '相同';
+        evidence.append(node('p', '同费用 · 完整方案相对' + byKey.get(comparison.key) +
+            '，理论合格比例变化 ' + comparison.pass_delta_pp.toFixed(1) + ' 个百分点，最长连续不合格时间' + gap + '。'));
+    }
+    const meta = document.createElement('details');
+    meta.append(node('summary','冻结输入与结果摘要'), node('p','输入 SHA-256 · ' + archive.input_digest),
+        node('p','结果 SHA-256 · ' + archive.result_digest));
+    evidence.append(meta, segmentSourceLink(segment));
+
+    const history = $('segment-history');
+    history.append(node('h3','实验档案'), node('p', localTime(archive.created_at) + ' · 建筑区实验已归档 · ' + archive.id));
+    const check = archive.reproducibility;
+    history.append(node('p', check ? localTime(check.checked_at) + ' · 复算' +
+        (check.matches && check.input_matches ? '一致' : '存在差异') : '尚无复算记录。'), node('h3','本段智能体历史'));
+}
+async function openSegment({experimentId, start, end}) {
+    const ref = {experiment_id:experimentId, start, end};
+    if (!validSegmentRef(ref)) return;
+    showDockView('evidence');
+    if (sameSegment(ref, segmentRef) && segmentLoaded) { updateSegmentHistory(true); return; }
+    segmentRef = ref;
+    segmentLoaded = false;
+    updateSegmentScope();
+    $('segment-panel').hidden = false;
+    $('segment-label').textContent = '建筑区合成航段';
+    $('segment-status').textContent = '正在读取实验档案…';
+    for (const part of ['chat','steps','evidence','history']) $('segment-' + part).replaceChildren();
+    controls(busy);
+    $('history').replaceChildren();
+    $('history-status').textContent = '正在核对选段档案…';
+    try {
+        const response = await fetch(root + '/api/twin-experiments/' + experimentId);
+        if (!response.ok) throw Error('档案读取失败（' + response.status + '）');
+        const archive = await response.json();
+        if (archive.id !== experimentId || archive.evidence_level !== 'synthetic_twin') throw Error('实验档案不匹配');
+        const segment = await window.TwinSegment.analyze(archive, start, end);
+        if (segmentRef !== ref) return;
+        if (!sameSegment(ref, segment) || archive.result_digest !== segment.result_digest ||
+            archive.input_digest !== segment.input_digest) throw Error('区段和档案摘要不一致');
+        renderSegmentArchive(archive, segment);
+        segmentLoaded = true;
+        updateSegmentHistory(true);
+    } catch (error) {
+        if (segmentRef !== ref) return;
+        $('segment-status').textContent = '选段证据暂不可用 · ' + error.message;
+        $('history-status').textContent = '档案核验失败，尚未加载关联记录。';
+    }
+    controls(busy);
+}
 
 function showDockView(name) {
     document.body.dataset.dockView = name;
@@ -102,6 +219,7 @@ if (docked) {
     }
     function applySkill() {
         if (!pendingSkill || $('run').disabled) return;
+        if (segmentRef) clearSegment();
         $('workflow').value = pendingSkill.workflow;
         if (pendingSkill.workflow === 'research' && pendingSkill.taskId) {
             $('task').value = String(pendingSkill.taskId);
@@ -114,11 +232,13 @@ if (docked) {
         $('question').focus();
     }
     $('skill-accept').onclick = applySkill;
+    $('clear-segment').onclick = () => { clearSegment(); showDockView('chat'); };
     $('skill-dismiss').onclick = dismissSkill;
     $('clear-skill').onclick = () => { selectSkill(null); $('question').focus(); };
     window.addEventListener('message', event => {
         if (event.origin !== location.origin || event.source !== window.parent || !event.data) return;
         const {type, workspace, scene, workflow, question, taskId, skill} = event.data;
+        if (type === 'workbench-twin-segment') { openSegment(event.data); return; }
         if (type === 'workbench-context' && typeof workspace === 'string' && Object.hasOwn(workspaceNames, workspace)) {
             $('host-context').textContent = workspaceNames[workspace];
             if (workspace === 'planning' && typeof scene === 'string' && Object.hasOwn(sceneNames, scene) && scene !== lastPlanningScene) {
@@ -147,6 +267,10 @@ function node(tag, value) {
 }
 
 function scopeOf(request) {
+    if (request.twin_segment && validSegmentRef(request.twin_segment)) {
+        const ref = request.twin_segment;
+        return '建筑区 · ' + ref.experiment_id.slice(0,8) + ' · 采样 ' + ref.start + '–' + ref.end;
+    }
     if (request.workflow === 'platform') return sceneNames[request.scene] || '场景未记录';
     return '研究子任务 ' + (request.task_id || '未记录') + (taskNames[request.task_id - 1] ? ' · ' + taskNames[request.task_id - 1] : '');
 }
@@ -171,6 +295,9 @@ function report(id, result, data) {
         target.textContent = '尚未生成';
         return;
     }
+    if (result.numeric_source === 'archived_twin_segment') {
+        target.append(node('p', '定量结论来自本段归档采样，验证建议由助手生成。'));
+    }
     for (const [key,title] of Object.entries({conclusion:'结论', evidence:'依据', evidence_ids:'引用证据',
         limitations:'局限', source_limitations:'工具适用范围', next_steps:'下一步建议'})) {
         if (!result[key]?.length) continue;
@@ -194,7 +321,10 @@ function evidenceSummary(item) {
     if (Array.isArray(data.tasks)) return '已读取 ' + data.tasks.length + ' 条规划任务';
     if (Array.isArray(data.assessments)) return '已读取 ' + data.assessments.length + ' 条历史验算';
     if (Number.isFinite(data.stats?.coverage)) return '合成覆盖率 ' + (data.stats.coverage * 100).toFixed(1) + '%';
-    if (item.tool === 'twin_experiment') return data.available ? '实验 ' + data.id : data.note;
+    if (item.tool === 'twin_experiment') {
+        if (validSegmentRef(data)) return '合成实验 ' + data.experiment_id + ' · 选段 ' + data.start_s + '–' + data.end_s + ' 秒';
+        return data.available ? '实验 ' + data.id : data.note;
+    }
     if (data.current?.version) return '指标版本 ' + data.current.version;
     if (Array.isArray(result.labels) && Array.isArray(result.values)) {
         return result.labels.map((label, i) => label + ' ' + (result.values[i] ?? '—')).join(' · ');
@@ -218,6 +348,7 @@ function renderEvidence(data, index) {
     if (meta.length) card.append(node('p', meta.join(' · ')));
     const summary = evidenceSummary(item);
     if (summary) card.append(node('p', summary));
+    if (item.tool === 'twin_experiment' && result.data && validSegmentRef(result.data)) card.append(segmentSourceLink(result.data));
     for (const note of result.limitations || []) card.append(node('p', note));
     if (result.boundary) card.append(node('p', result.boundary));
     const details = document.createElement('details');
@@ -269,6 +400,7 @@ function render(data) {
         $('trace').append(renderEvidence(data, visibleEvidenceCount));
     }
     record = data;
+    updateSegmentScope();
     if (!embedded && window.history && data.id && agentQuery.get('run') !== data.id) {
         agentQuery.set('run', data.id);
         agentQuery.delete('workflow');
@@ -289,20 +421,28 @@ function render(data) {
         if (localStorage.getItem(activeKey) === data.id) localStorage.removeItem(activeKey);
     }
 }
-async function refreshHistory() {
-    const data = await api('runs');
+async function refreshHistory(restoreRun=false) {
+    const ref = segmentRef;
+    const query = ref ? '?' + new URLSearchParams(ref) : '';
+    const data = await api('runs' + query);
+    if (segmentRef !== ref) return;
+    const runs = ref ? data.runs.filter(item => sameSegment(ref, item.request?.twin_segment)) : data.runs;
     const selected = $('history').value || record?.id;
     $('history').replaceChildren();
     const placeholder = document.createElement('option'); placeholder.value = ''; placeholder.textContent = '选择历史记录';
     $('history').append(placeholder);
-    for (const item of data.runs) {
+    for (const item of runs) {
         const option = document.createElement('option'); option.value = item.id;
         option.textContent = [(item.request?.question || item.id).slice(0,65), statusNames[item.status] || item.status,
             scopeOf(item.request || {}), localTime(item.created_at)].join(' · ');
         $('history').append(option);
     }
     $('history').value = selected || '';
-    $('history-status').textContent = data.runs.length ? '最近 ' + data.runs.length + ' 条记录' : '尚无历史记录。';
+    $('history-status').textContent = runs.length ? '最近 ' + runs.length + ' 条记录' : ref ? '此选段尚无智能体运行记录。' : '尚无历史记录。';
+    if (restoreRun && ref && runs.length && !busy && !sameSegment(ref, record?.request?.twin_segment)) {
+        clearTimeout(timer);
+        poll(runs[0].id, ++generation);
+    }
 }
 async function poll(id, version) {
     try {
@@ -328,6 +468,7 @@ $('workflow').onchange = () => {
 };
 for (const id of ['scene','mode','task']) $(id).onchange = $('workflow').onchange;
 $('run').onclick = async () => {
+    if (segmentRef && !segmentLoaded) return;
     const question = $('question').value.trim();
     if (question.length < 2) {
         $('stage').textContent = '请输入至少两个字符的问题。';
@@ -340,6 +481,7 @@ $('run').onclick = async () => {
         const request = {question, task_id:Number($('task').value),
             mode:$('mode').value, workflow:$('workflow').value, scene:$('scene').value};
         if (docked && selectedSkill && request.workflow === 'platform') request.skill = selectedSkill;
+        if (segmentRef) Object.assign(request, {workflow:'platform', scene:'urban', skill:'twin_experiment', twin_segment:segmentRef});
         const data = await api('runs', request);
         if (version !== generation) return;
         if (docked) {

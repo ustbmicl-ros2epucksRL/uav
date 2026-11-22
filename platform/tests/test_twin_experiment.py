@@ -115,3 +115,30 @@ def test_api_archives_lists_and_recomputes(client):
 def test_page_is_served(client):
     response = client.get('/twin')
     assert response.status_code == 200 and 'twin.js' in response.text
+
+
+def test_segment_clips_gaps_and_keeps_common_budget_separate_from_equal_spend(client, experiment):
+    identifier = 'c' * 32
+    record = dict(id=identifier, evidence_level='synthetic_twin', **experiment)
+    store.put('twin-experiment:' + identifier, record)
+    path = '/api/twin-experiments/' + identifier + '/segment'
+    response = client.get(path, params={'start': 68, 'end': 80})
+    assert response.status_code == 200
+    segment = response.json()
+    assert segment['sample_count'] == 13 and segment['result_digest'] == record['result_digest']
+    by_key = {row['key']: row for row in segment['deployments']}
+    for row in record['result']['deployments']:
+        selected = row['timeline'][68:81]
+        assert by_key[row['key']]['pass_count'] == sum(p['state'] == 'ok' for p in selected)
+    baseline = by_key['baseline']
+    assert [(s['start'], s['end'], s['state']) for s in baseline['segments']] == [
+        (68, 74, 'unlocatable'), (75, 75, 'blind'), (76, 80, 'unlocatable')]
+    assert baseline['blind_count'] == 1 and baseline['longest_gap_s'] == 13
+    comparisons = {item['key']: item for item in segment['comparisons']}
+    assert not comparisons['baseline']['equal_cost']
+    assert comparisons['ignore_occlusion']['equal_cost']
+    assert comparisons['ignore_occlusion']['pass_delta_pp'] == 100
+    assert comparisons['ignore_interference']['pass_delta_pp'] == 0
+    assert client.get(path, params={'start': 75, 'end': 75}).json()['sample_count'] == 1
+    for start, end in ((80, 68), (0, 121), (-1, 0)):
+        assert client.get(path, params={'start': start, 'end': end}).status_code == 422

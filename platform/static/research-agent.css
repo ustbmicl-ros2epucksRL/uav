@@ -158,6 +158,18 @@ body {
 }
 .agent-dock #stage { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agent-dock .assistant-content { padding: 6px 16px; overflow: auto; }
+.agent-dock #segment-panel { margin:0 0 6px; padding:5px 0; overflow-wrap:anywhere; font-size:13px; }
+.segment-heading { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.agent-dock .segment-heading button { padding:3px 8px; font-size:12px; }
+#segment-panel h3 { margin:6px 0 3px; font-size:14px; }
+#segment-panel p, #segment-panel ol { margin:3px 0; }
+#segment-status { color:#526c78; }
+.agent-dock:not([data-dock-view="chat"]) [data-segment-view="chat"],
+.agent-dock:not([data-dock-view="steps"]) [data-segment-view="steps"],
+.agent-dock:not([data-dock-view="evidence"]) [data-segment-view="evidence"],
+.agent-dock:not([data-dock-view="history"]) [data-segment-view="history"],
+.agent-dock:is([data-segment-scope="selected"],[data-segment-scope="match"]) :is(.scope-heading,.scope-controls,#selected-skill),
+.agent-dock[data-segment-scope="selected"] .run-panel { display:none; }
 .agent-dock .scope-panel, .agent-dock .run-panel {
     margin: 0;
     padding: 0;
@@ -184,6 +196,8 @@ body {
 .agent-dock #history-view > summary, .agent-dock #chat-view > h2,
 .agent-dock #steps-view h2, .agent-dock .evidence-section h2 { display: none; }
 .agent-dock .evidence-section .run-heading { justify-content: flex-end; }
+.agent-dock[data-segment-scope="match"] :is(#steps-view,#evidence-view) h2 { display:block; font-size:14px; }
+.agent-dock[data-segment-scope="match"] #evidence-view .run-heading { justify-content:space-between; }
 .agent-dock .evidence-section button { padding: 3px 8px; font-size: 12px; }
 .agent-dock:not([data-dock-view="chat"]) :is(#chat-view, #run-context, .scope-heading, .scope-controls),
 .agent-dock:not([data-dock-view="steps"]) #steps-view,

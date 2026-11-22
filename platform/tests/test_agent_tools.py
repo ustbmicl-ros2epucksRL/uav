@@ -126,6 +126,48 @@ def test_runs_are_grouped_by_session(client):
     assert client.get('/api/research-agent/runs?session_id=NOT-HEX').status_code == 422
 
 
+def test_selected_segment_binds_evidence_and_history_to_archive(client, monkeypatch):
+    from app import twin_experiment as twin
+    id_a, id_b = 'a' * 32, 'b' * 32
+    archive = dict(id=id_a, created_at='2026-11-22', evidence_level='synthetic_twin',
+                   **twin.run(seed('urban'), twin.TwinRequest(seed_count=4)))
+    store.put('twin-experiment:' + id_a, archive)
+    store.put('twin-experiment-latest:urban', twin.summary(dict(archive, id=id_b)))
+    ref = dict(experiment_id=id_a, start=68, end=80)
+    request = dict(question='核对选段合格点数', workflow='platform', twin_segment=ref)
+    path = '/api/research-agent/runs'
+    assert client.post(path, json=dict(request, scene='corridor')).status_code == 422
+    assert client.post(path, json=dict(request, twin_segment=dict(ref, end=999))).status_code == 422
+    assert client.post(path, json=dict(request, twin_segment=dict(ref, experiment_id=id_b))).status_code == 404
+    assert not client.get(path).json()['runs']
+
+    async def model(role, context, schema):
+        evidence, = context['evidence']
+        assert evidence['data']['experiment_id'] == id_a
+        assert evidence['data']['sample_count'] == 13
+        assert evidence['source_path'].endswith(f'{id_a}/segment?start=68&end=80')
+        return dict(conclusion='费用46元，全部方案更优', evidence=['未经核验'], evidence_ids=[evidence['evidence_id']],
+                    limitations=['合成证据'], next_steps=[])
+
+    monkeypatch.setattr(agent, 'model', model)
+    record = dict(id='e' * 32, created_at='2026-11-22', request=agent.RunRequest(**request).model_dump(),
+                  status='running', trace=[])
+    asyncio.run(agent.execute(record))
+    assert record['status'] == 'completed'
+    report = record['report']
+    assert report['numeric_source'] == 'archived_twin_segment' and '46元' not in report['conclusion']
+    assert any('46 万元' in fact for fact in report['evidence'])
+    assert any('忽略干扰' in fact and '持平' in fact for fact in report['evidence'])
+    assert any('68–74' in fact and '76–80' in fact for fact in report['evidence'])
+    record['report'] = dict(conclusion='旧版模型文字', evidence=['旧版数值'])
+    agent.save(record)
+    assert client.get(path + '/' + record['id']).json()['report']['conclusion'] == report['conclusion']
+    assert agent.read(record['id'])['report']['conclusion'] == '旧版模型文字'
+    agent.save(dict(id='f' * 32, created_at='2026-11-23', status='completed', request=dict(request, twin_segment=dict(ref, end=81))))
+    assert [r['id'] for r in client.get(path, params=dict(ref, limit=1)).json()['runs']] == [record['id']]
+    assert client.get(path, params={'experiment_id': id_a}).status_code == 422
+
+
 @pytest.mark.parametrize('fault', ['unknown_tool', 'duplicate', 'invented_evidence'])
 def test_model_instructions_cannot_expand_tools_or_forge_citations(client, monkeypatch, fault):
     async def model(role, payload, schema):

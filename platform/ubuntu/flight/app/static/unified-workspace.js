@@ -20,6 +20,7 @@
     const stage = $('business-stage');
     const chat = $('chat-frame');
     let active, stationReady = false, chatReady = false, pendingAlgorithm, pendingSkill;
+    let pendingSegment;
 
     function notify(message) {
         $('shell-status').textContent = message;
@@ -53,6 +54,42 @@
         if (!chatReady || !pendingSkill) return;
         chat.contentWindow.postMessage({type:'workbench-skill', skill:pendingSkill.name, question:pendingSkill.question, workflow:'platform'}, origin);
         pendingSkill = null;
+    }
+    function sendSegment() {
+        if (!chatReady || !pendingSegment) return;
+        chat.contentWindow.postMessage({type:'workbench-twin-segment', ...pendingSegment}, origin);
+        pendingSegment = null;
+    }
+    function validSegment(id, start, end) {
+        return typeof id === 'string' && /^[a-f0-9]{32}$/.test(id) &&
+            Number.isSafeInteger(start) && start >= 0 && Number.isSafeInteger(end) && end >= start;
+    }
+    function openSegment(id, start, end, action, addHistory = true) {
+        if (!validSegment(id, start, end) || !['assistant','station','planning'].includes(action)) return;
+        const station = action === 'station';
+        const key = station ? 'station' : 'planning';
+        const target = new URL(station ? '/station' : '/network/twin', origin);
+        target.searchParams.set(station ? 'twin_experiment' : 'experiment', id);
+        target.searchParams.set('start', start);
+        target.searchParams.set('end', end);
+        // Keep the planning frame and its frozen result when simply opening its evidence in Chat.
+        if (action !== 'assistant' || !active) switchPlatform(key, target, false);
+        if (action === 'assistant') {
+            pendingSegment = {experimentId:id, start, end};
+            setChat(true);
+            if (isFullscreen()) leaveFullscreen();
+            sendSegment();
+        }
+        if (addHistory) {
+            const url = new URL(location.href);
+            url.searchParams.set('platform', active);
+            url.searchParams.set('experiment', id);
+            url.searchParams.set('start', start);
+            url.searchParams.set('end', end);
+            if (action === 'assistant') url.searchParams.set('assistant','1');
+            else url.searchParams.delete('assistant');
+            if (url.href !== location.href) history.pushState(null,'',url);
+        }
     }
     function sendAlgorithm() {
         if (!stationReady || !pendingAlgorithm || active !== 'station') return;
@@ -145,6 +182,7 @@
         $('stage-title').textContent = platforms.get(key).label;
         if (addHistory && changed) {
             const hostUrl = new URL(location.href);
+            for (const field of ['experiment','start','end','assistant']) hostUrl.searchParams.delete(field);
             if (key === 'station') hostUrl.searchParams.delete('platform');
             else hostUrl.searchParams.set('platform',key);
             history.pushState(null,'',hostUrl);
@@ -156,7 +194,7 @@
         pendingAlgorithm = name;
         const frame = frames.get('station');
         const current = frame && currentFrameUrl(frame);
-        const onStationPage = current && new URL(current).pathname === '/station';
+        const onStationPage = current && new URL(current).pathname === '/station' && !new URL(current).searchParams.has('twin_experiment');
         switchPlatform('station', onStationPage ? null : '/station');
         sendAlgorithm();
     }
@@ -212,10 +250,20 @@
         if (event.source === chat.contentWindow) {
             if (m.type === 'platform-assistant-ready') {
                 chatReady = true;
-                sendChatContext(); sendSkill();
+                sendChatContext(); sendSkill(); sendSegment();
             } else if (m.type === 'platform-assistant-close') {
                 setChat(false); $('chat-toggle').focus();
+            } else if (m.type === 'workbench-clear-twin-segment') {
+                pendingSegment = null;
+                const url = new URL(location.href);
+                url.searchParams.delete('assistant');
+                history.replaceState(null,'',url);
             }
+            return;
+        }
+        if (m.type === 'workbench-twin-segment' && ['planning','station'].includes(active) &&
+                event.source === frames.get(active)?.contentWindow) {
+            openSegment(m.experimentId, m.start, m.end, m.action);
             return;
         }
         if (event.source === frames.get('station')?.contentWindow &&
@@ -307,8 +355,21 @@
         const requested = new URLSearchParams(location.search).get('platform');
         return platforms.has(requested) ? requested : 'station';
     }
-    window.addEventListener('popstate', () => switchPlatform(platformFromUrl(), null, false));
-    switchPlatform(platformFromUrl(), null, false);
+    function restoreLocation() {
+        const params = new URLSearchParams(location.search), key = platformFromUrl();
+        const id = params.get('experiment'), left = params.get('start'), right = params.get('end');
+        if (['planning','station'].includes(key) && /^\d+$/.test(left) && /^\d+$/.test(right) &&
+                validSegment(id, Number(left), Number(right))) {
+            openSegment(id, Number(left), Number(right), key, false);
+            if (params.get('assistant') === '1') openSegment(id, Number(left), Number(right), 'assistant', false);
+        } else {
+            const url = frames.get(key) && currentFrameUrl(frames.get(key));
+            const inReplay = url && (new URL(url).searchParams.has('twin_experiment') || new URL(url).searchParams.has('experiment'));
+            switchPlatform(key, inReplay ? platforms.get(key).path : null, false);
+        }
+    }
+    window.addEventListener('popstate', restoreLocation);
+    restoreLocation();
     chat.src = '/network/agents?embed=1&layout=dock&workspace=' + active;
     loadSkills();
 })();

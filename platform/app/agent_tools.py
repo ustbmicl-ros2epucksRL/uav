@@ -7,7 +7,8 @@ from typing import Literal
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
-from . import analysis, proposal_kpi, store
+from . import analysis, proposal_kpi, store, twin_segment
+from .twin_segment import SegmentRef
 from .scenes import seed
 
 
@@ -15,6 +16,7 @@ class ToolContext(BaseModel):
     model_config = ConfigDict(extra='forbid')
     scene: Literal['urban', 'corridor', 'electromagnetic'] = 'urban'
     expected_revision: int | None = Field(default=None, ge=1)
+    twin_segment: SegmentRef | None = None
 
 
 DESCRIPTIONS = {
@@ -22,7 +24,7 @@ DESCRIPTIONS = {
     'diagnose_coverage': '对冻结场景执行现有 50 m 网格覆盖基线，返回覆盖率和薄弱区域；不证明 10 m/2 m 指标达标。',
     'planning_records': '读取所选场景最近 20 个规划任务摘要；没有记录时明确返回空列表。',
     'assessment_results': '读取所选场景最近 10 个验算结果摘要及历史场景版本；不启动计算或应用方案。',
-    'twin_experiment': '读取所选场景最近一次数字孪生必要性实验：现有部署、方法方案与忽略遮挡/干扰的反事实在同一参考轨迹和随机种子下的对比，以及五个子项目的发现、必要性与待补证据；合成证据，不启动计算。',
+    'twin_experiment': '读取指定实验的航线选段；未指定时读取所选场景最近的数字孪生实验。对比同一参考航迹上的现有部署、方法方案与反事实方案，并标明合成证据。',
     'proposal_kpi': '读取申报书当前考核指标版本与阈值，以及仅作历史对照、不参与判定的旧平台指标。',
 }
 ToolName = Literal['scene_snapshot', 'diagnose_coverage', 'planning_records', 'assessment_results',
@@ -69,13 +71,24 @@ def snapshot(context):
                 result={key: result[key] for key in ('stats', 'checks', 'feasible', 'added_cost', 'method',
                         'optimality', 'evaluated_cells', 'input_digest') if key in result},
                 source_path='/api/assessments/' + row['id']))
-        twin_row = conn.execute('SELECT value FROM state WHERE key=?',
-                                ('twin-experiment-latest:' + context.scene,)).fetchone()
-    frozen = dict(scene=scene, twin_experiment=json.loads(twin_row[0]) if twin_row else None,
+        ref = context.twin_segment
+        archive_key = 'twin-experiment:' + ref.experiment_id if ref else 'twin-experiment-latest:' + context.scene
+        twin_row = conn.execute('SELECT value FROM state WHERE key=?', (archive_key,)).fetchone()
+        archive = json.loads(twin_row[0]) if twin_row else None
+    selected = None
+    if ref:
+        if archive is None:
+            raise HTTPException(404, '指定的孪生实验不存在')
+        if archive['inputs']['scene']['id'] != context.scene:
+            raise HTTPException(422, '所选实验与请求场景不一致')
+        selected = twin_segment.analyze(archive, ref.start, ref.end)
+    frozen = dict(scene=scene, twin_experiment=None if ref else archive,
                   tasks=[{key: task[key] for key in ('id', 'name', 'scene', 'revision', 'budget',
                          'target', 'updated_at') if key in task} for task in tasks[:20]],
                   tasks_truncated=len(tasks) > 20, assessments=assessments,
                   assessments_truncated=len(job_rows) > 10)
+    if selected is not None:
+        frozen['twin_segment'] = selected
     return dict(**frozen, snapshot_digest=digest(frozen), captured_at=store.now())
 
 
@@ -130,9 +143,16 @@ def execute(name, frozen):
         source = '/api/workflow/tasks'
         limitations.append('历史验算不能代表当前部署达标；无记录不等于指标合格。')
     elif name == 'twin_experiment':
-        data = twin_brief(frozen.get('twin_experiment'), scene['revision'])
+        selected = frozen.get('twin_segment')
+        if selected:
+            data = dict(available=True, **selected)
+            source = (f"/api/twin-experiments/{selected['experiment_id']}/segment"
+                      f"?start={selected['start']}&end={selected['end']}")
+            limitations.append('统计仅限所选航段。各方案共享预算上限，实际费用见 added_cost。最长间断按连续不合格采样数乘采样周期；航迹比例不作为全域体积覆盖率。')
+        else:
+            data = twin_brief(frozen.get('twin_experiment'), scene['revision'])
+            source = '/api/twin-experiments' + ('/' + data['id'] if data.get('id') else '')
         provenance = 'synthetic_twin_experiment'
-        source = '/api/twin-experiments' + ('/' + data['id'] if data.get('id') else '')
         limitations.extend(data.pop('limitations', []))
         limitations.append('数字孪生实验为合成参考轨迹与模拟量测，不能写成外场精度或现场验收。')
     else:
@@ -143,5 +163,7 @@ def execute(name, frozen):
     evidence = dict(tool=name, scene=scene['id'], scene_revision=scene['revision'],
                     snapshot_digest=frozen['snapshot_digest'], captured_at=frozen['captured_at'],
                     provenance=provenance, source_path=source, data=data, limitations=limitations)
+    if name == 'twin_experiment' and frozen.get('twin_segment'):
+        evidence['scene_revision'] = frozen['twin_segment']['scene_revision']
     evidence['evidence_id'] = 'ev-' + digest(evidence)[:24]
     return evidence

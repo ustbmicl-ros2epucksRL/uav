@@ -123,3 +123,13 @@ def test_workspace_entry_and_station_deep_links(api):
         assert 'id="portal-link" href="/service/"' in page.text
         assert '/static/workbench.js' not in page.text
     assert '/static/gcs.js' in api.get('/?view=workbench').text
+
+
+def test_archived_planning_segment_opens_read_only_replay(api):
+    page = api.get('/station', params={'twin_experiment': 'ab' * 16, 'start': 3, 'end': 8, 'embed': 1})
+    assert page.status_code == 200
+    assert page.headers['cache-control'] == 'no-store'
+    assert '/static/planning-replay.js' in page.text
+    assert '/static/gcs.js' not in page.text
+    for name in ('planning-replay.js', 'planning-replay.css'):
+        assert api.get('/static/' + name).status_code == 200

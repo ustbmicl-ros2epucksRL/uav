@@ -148,7 +148,9 @@ def health():
 
 
 @app.get("/station")
-def station_page():
+def station_page(request: Request):
+    if "twin_experiment" in request.query_params:
+        return FileResponse(ROOT / "static" / "planning-replay.html")
     return FileResponse(ROOT / "static" / "index.html")
 
 
@@ -158,7 +160,7 @@ def index(request: Request):
     station_params = {"view", "embed", "source", "record", "task", "report", "transfer",
                       "dual", "assessment", "round", "step", "autoplay", "result"}
     if station_params.intersection(request.query_params) or request.headers.get("sec-fetch-dest") == "iframe":
-        return station_page()
+        return station_page(request)
     return FileResponse(ROOT / "static" / "unified-workspace.html")
 
 

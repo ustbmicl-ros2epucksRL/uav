@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 import httpx
 from . import agent_run_management, agent_tools, memory_value, store
 from .schemas import ModelSettings
+from .twin_segment import SegmentRef, report_facts
 
 router = APIRouter()
 JOBS = {}
@@ -30,6 +31,7 @@ class RunRequest(BaseModel):
     workflow: Literal['research', 'platform'] = 'research'
     scene: Literal['urban', 'corridor', 'electromagnetic'] = 'urban'
     skill: agent_tools.ToolName | None = None
+    twin_segment: SegmentRef | None = None
     session_id: str | None = Field(default=None, pattern=r'^[a-f0-9]{8,32}$')
 
 
@@ -96,6 +98,14 @@ class EvidenceReport(Report):
     evidence_ids: list[str] = Field(min_length=1, max_length=4)
 
 
+def bind_segment_facts(report, evidence):
+    if len(evidence) == 1 and evidence[0].get('tool') == 'twin_experiment':
+        data = evidence[0].get('data', {})
+        if data.get('experiment_id') and data.get('comparisons'):
+            report['conclusion'], report['evidence'] = report_facts(data)
+            report['numeric_source'] = 'archived_twin_segment'
+
+
 def validated_report(value, evidence):
     report = EvidenceReport.model_validate(value).model_dump()
     allowed = {item['evidence_id'] for item in evidence}
@@ -103,14 +113,19 @@ def validated_report(value, evidence):
         raise ValueError('模型引用了本次执行中不存在的证据，已拒绝报告')
     # These boundaries are copied from tools, not left to the model to remember.
     report['source_limitations'] = list(dict.fromkeys(note for item in evidence for note in item['limitations']))
+    bind_segment_facts(report, evidence)
     return report
 
 
 async def execute_platform(record):
-    advance(record, 'snapshot', '冻结场景、规划任务、历史验算与孪生实验')
-    frozen = await asyncio.to_thread(agent_tools.snapshot, {'scene': record['request']['scene']})
+    segment = record['request'].get('twin_segment')
+    context = {'scene': record['request']['scene']}
+    if segment:
+        context['twin_segment'] = segment
+    advance(record, 'snapshot', '核对已归档实验与选段' if segment else '冻结场景、规划任务、历史验算与孪生实验')
+    frozen = record.get('input_snapshot') or await asyncio.to_thread(agent_tools.snapshot, context)
     record['input_snapshot'] = frozen
-    skill = record['request'].get('skill')
+    skill = 'twin_experiment' if segment else record['request'].get('skill')
     if skill:
         advance(record, 'select', '采用所选 Skill：' + skill)
         selection = {'purpose': '使用所选只读工具核对冻结的场景快照', 'tools': [skill]}
@@ -130,11 +145,15 @@ async def execute_platform(record):
         advance(record, 'tool:' + name, '读取或计算：' + name)
         value = await asyncio.to_thread(agent_tools.execute, name, frozen)
         evidence.append(value)
-        record_evidence(record, tool=name, arguments={'scene': record['request']['scene']}, result=value)
+        record_evidence(record, tool=name, arguments=context, result=value)
     payload = dict(question=record['request']['question'], evidence=evidence,
                    instruction='仅依据给定证据，引用具体数值与 evidence_id。空记录要说明缺少证据；历史版本不代表当前达标。'
                                '孪生实验是合成证据，必要性结论要写明对比对象；反事实未变差时如实说明该项未得到支持。'
+                               '如果给定了航线选段，只报告该段。pass_delta_pp 为方法减去对照的百分点，gap_reduction_s 为对照减去方法的秒数。'
+                               'causes.samples 为累计采样点数；连续区间只读 segments。逐一指名等费用对照方案，分别说明改善、持平或退化；不能把新增设备相对原部署的效果全归于规划方法。'
                                'next_steps 仅给人工建议，不宣称已更改配置、批准任务或控制飞机。')
+    if segment:
+        payload['instruction'] += '所选航段的定量结论和分段事实由平台从档案直接生成。请针对本次提问填写适用边界与下一步验证建议。'
     advance(record, 'report', '生成带证据引用的平台建议')
     record['report'] = validated_report(await model('平台诊断分析员', payload, EvidenceReport), evidence)
     if record['request']['mode'] == 'review':
@@ -273,12 +292,21 @@ async def start(request:RunRequest):
     if request.skill is not None and request.workflow != 'platform':
         raise HTTPException(422, '指定平台 Skill 需要选择平台诊断工作流')
     if JOBS:raise HTTPException(409,'已有研究任务运行中，请等待完成或停止该任务')
+    snapshot = None
+    if request.twin_segment is not None:
+        if request.workflow != 'platform' or request.skill not in (None, 'twin_experiment'):
+            raise HTTPException(422, '选段分析需要平台诊断及孪生实验工具')
+        snapshot = await asyncio.to_thread(agent_tools.snapshot, {'scene': request.scene, 'twin_segment': request.twin_segment})
     record={'id':uuid.uuid4().hex,'request':request.model_dump(),'session_id':request.session_id,'status':'running','stage':'排队准备','steps':[],
             'evidence_status':'platform_records_and_simulation' if request.workflow == 'platform' else 'synthetic_only',
             'created_at':store.now(),'trace':[],
             'roles':['研究协调与分析']+(['证据复核'] if request.mode=='review' else [])}
     # History readers run in worker threads. Publish the file and its live slot together.
     with _interruption_lock:
+        if JOBS:
+            raise HTTPException(409, '已有研究任务运行中，请等待完成或停止该任务')
+        if snapshot is not None:
+            record['input_snapshot'] = snapshot
         save(record)
         JOBS[record['id']] = asyncio.create_task(execute(record))
     return record
@@ -309,7 +337,14 @@ def managed_runs(q: str = Query('', max_length=300),
 
 @router.get('/api/research-agent/runs')
 def list_runs(limit: int = Query(20, ge=1, le=100),
-              session_id: str | None = Query(None, pattern=r'^[a-f0-9]{8,32}$')):
+              session_id: str | None = Query(None, pattern=r'^[a-f0-9]{8,32}$'),
+              experiment_id: str | None = Query(None, pattern=r'^[a-f0-9]{32}$'),
+              start: int | None = Query(None, ge=0), end: int | None = Query(None, ge=0)):
+    selection = None
+    if any(value is not None for value in (experiment_id, start, end)):
+        if experiment_id is None or start is None or end is None or start > end:
+            raise HTTPException(422, '查询选段历史需要实验编号和有效的起止采样点')
+        selection = dict(experiment_id=experiment_id, start=start, end=end)
     summaries = []
     for path in folder().glob('*.json'):
         if not re.fullmatch(r'[a-f0-9]{32}', path.stem):
@@ -319,6 +354,8 @@ def list_runs(limit: int = Query(20, ge=1, le=100),
         except (ValueError, KeyError, OSError):
             continue
         if session_id and record.get('session_id') != session_id:
+            continue
+        if selection is not None and (record.get('request') or {}).get('twin_segment') != selection:
             continue
         summaries.append({key: record.get(key) for key in ('id', 'request', 'session_id', 'status', 'stage', 'created_at', 'model')})
     summaries.sort(key=lambda row: row.get('created_at') or '', reverse=True)
@@ -338,6 +375,14 @@ def result(run_id: str):
     if record['status'] == 'interrupted':
         # Earlier releases could leave a running step. Its exact end time is unknown.
         finish_step(record, 'interrupted', None)
+    # Older model summaries could misstate units. Present numbers from their own
+    # saved evidence without changing the archived run or consulting a newer case.
+    if (record.get('request') or {}).get('twin_segment'):
+        evidence = [entry['result'] for entry in record.get('trace', []) if entry.get('result')]
+        for key in ('report', 'review'):
+            report = record.get(key)
+            if report and not report.get('numeric_source'):
+                bind_segment_facts(report, evidence)
     return record
 
 async def rank_memory(request: MemoryRankRequest):
