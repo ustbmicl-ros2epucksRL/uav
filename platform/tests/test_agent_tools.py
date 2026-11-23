@@ -1,6 +1,7 @@
 import asyncio
 import json
 
+import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -20,7 +21,7 @@ def client(tmp_path, monkeypatch):
 
 def test_catalog_scope_and_unknown_commands(client):
     catalog = client.get('/api/research-agent/tools').json()
-    assert len(catalog['tools']) == 6
+    assert len(catalog['tools']) == len(tools.DESCRIPTIONS) == 11
     assert all(t['effects'] == 'read_only' for t in catalog['tools'])
     for path in ('arm', 'apply_plan'):
         assert client.post('/api/research-agent/tools/' + path, json={'scene': 'urban'}).status_code == 422
@@ -230,13 +231,17 @@ def test_workspace_skill_executes_selected_tool_and_checks_its_evidence(client, 
     assert record['status'] == 'completed'
     assert record['selection']['tools'] == ['scene_snapshot']
     evidence, = record['trace']
-    assert evidence['arguments'] == {'scene': 'corridor'}
+    assert evidence['arguments'] == {'scene': 'corridor', 'query': '核对当前设备配置'}
     assert record['report']['evidence_ids'] == [evidence['result']['evidence_id']]
 
 
 def test_workspace_skill_evidence_sources_are_mounted(tmp_path, monkeypatch):
+    from app import flight_tools
     from app.main import app as planning_app
 
+    def unreachable(url):
+        raise httpx.ConnectError('down')
+    monkeypatch.setattr(flight_tools, 'fetch', unreachable)
     monkeypatch.setattr(store, 'DATA', tmp_path)
     store.init()
     host = FastAPI()
@@ -246,7 +251,82 @@ def test_workspace_skill_evidence_sources_are_mounted(tmp_path, monkeypatch):
             response = client.post('/network/api/research-agent/tools/' + name, json={'scene': 'urban'})
             assert response.status_code == 200
             evidence = response.json()
-            source = client.get('/network' + evidence['source_path'])
+            if evidence.get('source_origin') == 'flight_platform':
+                assert evidence['data'] == {'available': False, 'error': 'ConnectError'}
+                assert any('缺少证据' in note for note in evidence['limitations'])
+                continue
+            source = client.get('/network' + evidence['source_path'].split('#')[0])
             assert source.status_code == 200, (name, evidence['source_path'])
             if name == 'proposal_kpi':
                 assert source.json() == evidence['data']
+
+
+def test_proposal_search_cites_formal_pages(client):
+    from app import proposal_source
+    if not proposal_source.path().is_file():
+        pytest.skip('正式申请书 PDF 只在本机，不进入公开仓库')
+    evidence = tools.execute('proposal_search', tools.snapshot({'scene': 'urban', 'query': '设备接入能力要求几类设备'}))
+    data = evidence['data']
+    assert data['version'] == proposal_source.VERSION and data['pages'] == 234
+    top = data['passages'][0]
+    assert top['page'] == 20 and top['printed_page'] == 18 and '不少于5类异构感知设备' in top['text']
+    assert top['source_path'] == '/api/research-analysis/proposal#page=20'
+    assert any('不代表平台已实现' in note for note in evidence['limitations'])
+    assert tools.execute('proposal_search', tools.snapshot({'scene': 'urban'}))['data']['passages'] == []
+
+
+def test_proposal_search_without_local_pdf(client, monkeypatch, tmp_path):
+    monkeypatch.setenv('SENSE_PROPOSAL_PDF', str(tmp_path / 'missing.pdf'))
+    data = tools.execute('proposal_search', tools.snapshot({'scene': 'urban', 'query': '覆盖率'}))['data']
+    assert data['available'] is False and '缺少原文证据' in data['note']
+
+
+def test_flight_tools_summarize_records_read_only(client, monkeypatch):
+    from app import flight_tools
+    monkeypatch.setenv('FLIGHT_BASE_URL', 'http://127.0.0.1:9')
+    monkeypatch.delenv('LOWAIR_BASE_URL', raising=False)
+    comparison = lambda policy, ms: dict(policy=policy, status='ok', makespan_s=ms, energy_j=10.0, deadline_met=5, task_count=5)
+    run = dict(id='a' * 32, created_at=1.0, status='ok', source='simulation', input_sha256='h',
+               request=dict(scene='urban', area_id='west', planner='bitstar', seed=7),
+               route=dict(status='ok', algorithm='bitstar', distance_m=600.0, note='巡航段', points=[[0, 0, 0]]),
+               snapshots=[dict(comparisons=[comparison(p, 1.0 + i) for i, p in enumerate(flight_tools.POLICIES)])] * 2,
+               assumptions=['独立静态航路采样点'])
+    records = [dict(id='r1', status='completed', business_task_id='TASK-000001')]
+    routes = {
+        '/api/algorithms/runs': dict(records=[{k: run[k] for k in ('id', 'created_at', 'status', 'request')}]),
+        '/api/algorithms/runs/' + 'a' * 32: run,
+        '/api/compute': dict(state='not_started', source='local-process-execution'),
+        '/api/sitl/records': dict(items=records, total=1),
+        '/api/compute/records/r1/batches': dict(batches=[]),
+        '/api/stability': dict(items=[dict(id='s1', status='passed', requested_rounds=3,
+                                           rounds=[dict(status='passed')] * 3, dual_exercise=True)]),
+        '/service/api/performance': dict(tasks=2, completed=1),
+        '/service/api/tasks': dict(tasks=[dict(id='TASK-1', created_at=1, status='completed', route=[]),
+                                          dict(id='TASK-2', created_at=2, status='scheduled', route=[])]),
+    }
+    seen = []
+    def fetch(url):
+        seen.append(url)
+        return routes[httpx.URL(url).path]
+    monkeypatch.setattr(flight_tools, 'fetch', fetch)
+    frozen = tools.snapshot({'scene': 'urban'})
+    runs = tools.execute('flight_algorithm_runs', frozen)
+    assert runs['source_origin'] == 'flight_platform' and runs['provenance'] == 'flight_platform_records'
+    summary, = runs['data']['runs']
+    assert summary['route'] == dict(status='ok', algorithm='bitstar', distance_m=600.0, note='巡航段')
+    assert summary['policies']['heft'] == dict(samples=2, ok=2, mean_makespan_s=1.0, mean_energy_j=10.0, deadline_met=10, task_count=10)
+    assert runs['data']['assumptions'] == ['独立静态航路采样点']
+    compute = tools.execute('flight_compute', frozen)['data']
+    assert compute['records_with_batches'] == 0 and compute['capabilities']
+    assert '计算稳定性回归 0 次' in compute['facts'][1] and '不代表功能未实现' in compute['facts'][3]
+    assert '最短的策略为 heft' in runs['data']['facts'][1]
+    report = agent.validated_report(dict(conclusion='c', evidence=[], evidence_ids=[runs['evidence_id']],
+                                         limitations=['l'], next_steps=[]), [runs])
+    assert report['platform_facts'] == runs['data']['facts']
+    assert compute['stability']['compute_regressions'] == 0 and compute['stability']['recent'][0]['kind'] == 'dual_exercise'
+    tasks = tools.execute('service_tasks', frozen)
+    assert [t['id'] for t in tasks['data']['tasks']] == ['TASK-2', 'TASK-1'] and 'route' not in tasks['data']['tasks'][0]
+    assert tasks['source_path'] == '/service/api/tasks'
+    assert tools.execute('flight_records', frozen)['data']['total'] == 1
+    assert all(url.startswith('http://127.0.0.1:9/') for url in seen)
+    assert any(url.startswith('http://127.0.0.1:9/service/') for url in seen)

@@ -14,6 +14,11 @@
         ['assessment_results', '历史验算结果'],
         ['twin_experiment', '数字孪生对照'],
         ['proposal_kpi', '申报指标核对'],
+        ['proposal_search', '申请书原文检索'],
+        ['flight_algorithm_runs', '在研：航路算法实验'],
+        ['flight_compute', '在研：云边端执行'],
+        ['flight_records', '在研：飞行档案'],
+        ['service_tasks', '在研：低空服务任务'],
     ]);
     const frames = new Map();
     const navMedia = matchMedia('(max-width:820px)');

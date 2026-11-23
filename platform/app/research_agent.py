@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, Request, Query
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, ConfigDict, Field
 import httpx
-from . import agent_run_management, agent_tools, memory_value, store
+from . import agent_run_management, agent_tools, memory_value, research_analysis, store
 from .schemas import ModelSettings
 from .twin_segment import SegmentRef, report_facts
 
@@ -113,13 +113,16 @@ def validated_report(value, evidence):
         raise ValueError('模型引用了本次执行中不存在的证据，已拒绝报告')
     # These boundaries are copied from tools, not left to the model to remember.
     report['source_limitations'] = list(dict.fromkeys(note for item in evidence for note in item['limitations']))
+    platform_facts = [fact for item in evidence for fact in item.get('data', {}).get('facts', [])]
+    if platform_facts:
+        report['platform_facts'] = platform_facts
     bind_segment_facts(report, evidence)
     return report
 
 
 async def execute_platform(record):
     segment = record['request'].get('twin_segment')
-    context = {'scene': record['request']['scene']}
+    context = {'scene': record['request']['scene'], 'query': record['request']['question'][:200]}
     if segment:
         context['twin_segment'] = segment
     advance(record, 'snapshot', '核对已归档实验与选段' if segment else '冻结场景、规划任务、历史验算与孪生实验')
@@ -136,7 +139,10 @@ async def execute_platform(record):
             'tools': agent_tools.DESCRIPTIONS,
             'instruction': '选择 1 至 4 个不同的只读工具；场景由用户指定，不可修改。'
                            '问到研究内容的重要性、必要性、子项目关系或方法效果时选 twin_experiment；'
-                           '问到考核指标或是否达标时选 proposal_kpi，并配合 assessment_results。'}, PlatformSelection)).model_dump()
+                           '问到考核指标或是否达标时选 proposal_kpi，并配合 assessment_results。'
+                           '问到申请书写了什么、条款原文或页码时选 proposal_search。'
+                           '问到在研项目的航路规划、云边端调度、飞行档案或低空服务任务时，选对应的 flight_algorithm_runs、'
+                           'flight_compute、flight_records 或 service_tasks。'}, PlatformSelection)).model_dump()
         if len(selection['tools']) != len(set(selection['tools'])):
             raise ValueError('模型重复选择工具，已拒绝执行')
     record['selection'] = selection
@@ -149,6 +155,8 @@ async def execute_platform(record):
     payload = dict(question=record['request']['question'], evidence=evidence,
                    instruction='仅依据给定证据，引用具体数值与 evidence_id。空记录要说明缺少证据；历史版本不代表当前达标。'
                                '孪生实验是合成证据，必要性结论要写明对比对象；反事实未变差时如实说明该项未得到支持。'
+                               '引用申请书原文时写明 PDF 页码，原文是申报承诺，不是完成情况。'
+                               '在研平台数据 available=false 时写缺少证据；data.facts 是平台据记录写出的事实，结论必须与之一致，不得把“当前未运行”说成“未实现”。'
                                '如果给定了航线选段，只报告该段。pass_delta_pp 为方法减去对照的百分点，gap_reduction_s 为对照减去方法的秒数。'
                                'causes.samples 为累计采样点数；连续区间只读 segments。逐一指名等费用对照方案，分别说明改善、持平或退化；不能把新增设备相对原部署的效果全归于规划方法。'
                                'next_steps 仅给人工建议，不宣称已更改配置、批准任务或控制飞机。')
@@ -224,7 +232,7 @@ async def execute(record):
             await asyncio.wait_for(execute_platform(record), timeout=600)
             return
         advance(record,'catalog','读取研究任务与工具目录')
-        task=json.loads((store.ROOT/'static/research-tasks.json').read_text())[record['request']['task_id']-1]
+        task=research_analysis.tasks()[record['request']['task_id']-1]
         catalog=[s for s in await tool('catalog') if s['task']==task['id']]
         record_evidence(record, tool='read_research_task', source='人工整理的申请书任务摘要，非实时 PDF 检索', result=task)
         advance(record,'select','DeepSeek 选择实验及参数')

@@ -7,7 +7,7 @@ from typing import Literal
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
-from . import analysis, proposal_kpi, store, twin_segment
+from . import analysis, flight_tools, proposal_kpi, proposal_source, store, twin_segment
 from .twin_segment import SegmentRef
 from .scenes import seed
 
@@ -17,6 +17,7 @@ class ToolContext(BaseModel):
     scene: Literal['urban', 'corridor', 'electromagnetic'] = 'urban'
     expected_revision: int | None = Field(default=None, ge=1)
     twin_segment: SegmentRef | None = None
+    query: str | None = Field(default=None, min_length=1, max_length=200)
 
 
 DESCRIPTIONS = {
@@ -26,9 +27,15 @@ DESCRIPTIONS = {
     'assessment_results': '读取所选场景最近 10 个验算结果摘要及历史场景版本；不启动计算或应用方案。',
     'twin_experiment': '读取指定实验的航线选段；未指定时读取所选场景最近的数字孪生实验。对比同一参考航迹上的现有部署、方法方案与反事实方案，并标明合成证据。',
     'proposal_kpi': '读取正式申报书考核指标版本与阈值，以及仅作对照、不参与判定的早期稿指标。',
+    'proposal_search': '在正式申请书 end-1124 全文中检索与提问相关的条款原文，返回 PDF 页码；只引用原文，不解释为已完成。',
+    'flight_algorithm_runs': '在研项目：读取最近的航路规划算法实验，含路径长度及 HEFT/本地/边缘/云端时延与能耗对比；为仿真结果。',
+    'flight_compute': '在研项目：读取云边端实际执行状态、各飞行档案关联的计算批次数和稳定性测试结果。',
+    'flight_records': '在研项目：读取最近的 SITL 飞行档案摘要（时长、采样数、关联业务任务）。',
+    'service_tasks': '在研项目：读取低空服务管理平台的任务统计与最近任务（状态、校验结果、执行来源）。',
 }
 ToolName = Literal['scene_snapshot', 'diagnose_coverage', 'planning_records', 'assessment_results',
-                   'twin_experiment', 'proposal_kpi']
+                   'twin_experiment', 'proposal_kpi', 'proposal_search', 'flight_algorithm_runs',
+                   'flight_compute', 'flight_records', 'service_tasks']
 
 
 def digest(value):
@@ -82,7 +89,7 @@ def snapshot(context):
         if archive['inputs']['scene']['id'] != context.scene:
             raise HTTPException(422, '所选实验与请求场景不一致')
         selected = twin_segment.analyze(archive, ref.start, ref.end)
-    frozen = dict(scene=scene, twin_experiment=None if ref else archive,
+    frozen = dict(scene=scene, query=context.query, twin_experiment=None if ref else archive,
                   tasks=[{key: task[key] for key in ('id', 'name', 'scene', 'revision', 'budget',
                          'target', 'updated_at') if key in task} for task in tasks[:20]],
                   tasks_truncated=len(tasks) > 20, assessments=assessments,
@@ -155,6 +162,18 @@ def execute(name, frozen):
         provenance = 'synthetic_twin_experiment'
         limitations.extend(data.pop('limitations', []))
         limitations.append('数字孪生实验为合成参考轨迹与模拟量测，不能写成外场精度或现场验收。')
+    elif name == 'proposal_search':
+        data = proposal_source.search(frozen.get('query') or '')
+        provenance = 'proposal_document'
+        source = '/api/research-analysis/proposal'
+        limitations.append('条款原文说明申报承诺，不代表平台已实现或指标已达到。')
+        if not data['passages']:
+            limitations.append('未检索到相关原文，不能据此推断申请书没有该内容。')
+    elif name in flight_tools.TOOLS:
+        data, source, notes = flight_tools.read(name)
+        provenance = 'flight_platform_records'
+        limitations.extend(notes)
+        limitations.append('数据为调用时读取的在研平台记录，与规划场景快照相互独立。')
     else:
         data = proposal_kpi.published_indicators()
         provenance = 'proposal_document'
@@ -163,6 +182,8 @@ def execute(name, frozen):
     evidence = dict(tool=name, scene=scene['id'], scene_revision=scene['revision'],
                     snapshot_digest=frozen['snapshot_digest'], captured_at=frozen['captured_at'],
                     provenance=provenance, source_path=source, data=data, limitations=limitations)
+    if name in flight_tools.TOOLS:
+        evidence['source_origin'] = 'flight_platform'
     if name == 'twin_experiment' and frozen.get('twin_segment'):
         evidence['scene_revision'] = frozen['twin_segment']['scene_revision']
     evidence['evidence_id'] = 'ev-' + digest(evidence)[:24]

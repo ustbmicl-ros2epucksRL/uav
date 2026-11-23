@@ -413,15 +413,14 @@ def flight_route_page(task_id: str):
 
 @router.post('/api/flight-route/{task_id}')
 def plan_approved_flight(task_id: str):
-    import os
     import re
     import httpx
     from ubuntu.flight.app import disposition
+    from .flight_tools import endpoints
 
     if not re.fullmatch(r'TASK-[0-9]+', task_id):
         raise HTTPException(422, '无效任务编号')
-    service = os.environ.get('LOWAIR_BASE_URL', 'http://127.0.0.1:8771').rstrip('/')
-    ground = os.environ.get('FLIGHT_BASE_URL', 'http://127.0.0.1:8772').rstrip('/')
+    ground, service = endpoints()
     try:
         with httpx.Client(timeout=10, trust_env=False) as client:
             def fetch(url):

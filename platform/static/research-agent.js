@@ -51,7 +51,9 @@ const taskNames = ['三维覆盖', '干扰与协同', '按需规划', '运行平
 const workspaceNames = {station:'区域地面站', planning:'感知网络规划', service:'低空服务管理'};
 const platformToolNames = {
     scene_snapshot:'场景配置', diagnose_coverage:'覆盖诊断', planning_records:'规划任务',
-    assessment_results:'历史验算', twin_experiment:'孪生实验', proposal_kpi:'申报指标'
+    assessment_results:'历史验算', twin_experiment:'孪生实验', proposal_kpi:'申报指标',
+    proposal_search:'申请书原文', flight_algorithm_runs:'航路算法', flight_compute:'云边端执行',
+    flight_records:'飞行档案', service_tasks:'低空服务任务'
 };
 const toolNames = {
     ...platformToolNames,
@@ -61,7 +63,7 @@ const statusNames = {running:'进行中', completed:'已完成', failed:'失败'
 const provenanceNames = {
     configuration_snapshot:'配置快照', synthetic_calculation:'合成计算', stored_records:'业务记录',
     stored_simulation_results:'历史仿真记录', synthetic_twin_experiment:'合成孪生记录',
-    proposal_document:'申报书', synthetic_only:'合成算例'
+    proposal_document:'申报书', synthetic_only:'合成算例', flight_platform_records:'在研平台记录'
 };
 const workspace = workspaceNames[agentQuery.get('workspace')];
 $('host-context').textContent = workspace || '研究助手';
@@ -298,7 +300,7 @@ function report(id, result, data) {
     if (result.numeric_source === 'archived_twin_segment') {
         target.append(node('p', '定量结论来自本段归档采样，验证建议由助手生成。'));
     }
-    for (const [key,title] of Object.entries({conclusion:'结论', evidence:'依据', evidence_ids:'引用证据',
+    for (const [key,title] of Object.entries({platform_facts:'平台记录事实', conclusion:'结论', evidence:'依据', evidence_ids:'引用证据',
         limitations:'局限', source_limitations:'工具适用范围', next_steps:'下一步建议'})) {
         if (!result[key]?.length) continue;
         target.append(node('h3', title));
@@ -317,6 +319,16 @@ function report(id, result, data) {
 function evidenceSummary(item) {
     const result = item.result || {};
     const data = result.data || {};
+    if (item.tool === 'proposal_search') {
+        return data.passages?.length ? '申请书原文 ' + data.passages.length + ' 段 · 第 ' + data.passages.map(p => p.page).join('、') + ' 页' : (data.note || '未检索到相关原文');
+    }
+    if (item.tool?.startsWith('flight_') || item.tool === 'service_tasks') {
+        if (data.available === false) return '在研平台接口不可达，缺少证据';
+        if (item.tool === 'flight_algorithm_runs') return '航路算法实验 ' + data.runs.length + ' 次';
+        if (item.tool === 'flight_compute') return '计算回归 ' + data.stability.compute_passed + '/' + data.stability.compute_regressions + ' 次通过 · 主平台档案带计算批次 ' + data.records_with_batches + '/' + data.records.length + ' 条';
+        if (item.tool === 'flight_records') return 'SITL 飞行档案 ' + data.items.length + ' / ' + data.total + ' 条';
+        return '低空服务任务 ' + data.total + ' 项，已完成 ' + data.performance.completed + ' 项';
+    }
     if (Array.isArray(data.devices)) return '配置设备 ' + data.devices.length + ' 台';
     if (Array.isArray(data.tasks)) return '已读取 ' + data.tasks.length + ' 条规划任务';
     if (Array.isArray(data.assessments)) return '已读取 ' + data.assessments.length + ' 条历史验算';
