@@ -94,6 +94,12 @@ def test_api_persistence_input_hash_and_no_flight_side_effect(client):
     assert client.post('/api/algorithms/runs',json={'compute':{'nodes':[],'tasks':[],'links':[]}}).status_code==422
     assert client.get('/api/algorithms/runs/not-found').status_code==404
 
+def test_same_input_and_seed_reproduce_route_and_schedule(client):
+    runs=[client.post('/api/algorithms/runs',json={'planner':'bitstar','seed':7}).json() for _ in range(2)]
+    assert runs[0]['id']!=runs[1]['id'] and runs[0]['input_sha256']==runs[1]['input_sha256']
+    assert runs[0]['route']==runs[1]['route']
+    assert runs[0]['snapshots']==runs[1]['snapshots']
+
 def test_config_and_history_do_not_mask_failed_route(client):
     assert client.post('/api/algorithms/runs',json={'start_xy':[-20,0]}).status_code==422
     assert client.get('/api/algorithms/runs').json()['records']==[]
