@@ -10,16 +10,17 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import Field, model_validator
 from . import store
+from .proposal_source import TASK_PAGES, page_label
 from .planning_portal import Strict, inputs, resources, read_record, records
 
 router = APIRouter()
 KINDS = {'anti_interference':'抗干扰验证','positioning':'定位与测速验证','tracking':'跨站连续跟踪','blind_fill':'建筑区补盲','recognition':'多模态融合识别'}
 RESEARCH = [
-    {'task':'一：三维覆盖建模','pages':'26','support':'场景与部署快照、既有覆盖/盲区计算、覆盖模型结果归档','boundary':'当前几何与概率基线需实测标定'},
-    {'task':'二：干扰与多站协同','pages':'27','support':'干扰条件记录、分来源定位/测速残差、信号质量与模型版本追溯','boundary':'误差统计不等同于已验证干扰机理或协同增益'},
-    {'task':'三：按需规划与多目标优化','pages':'28','support':'关联规划任务与方案快照、基准与改进试验对比','boundary':'既有有限候选寻优；大规模算法待研究接入'},
-    {'task':'四：平台研发','pages':'28–29、40–44','support':'观测与真值分离接入、数据校验、三维回放、残差反馈、版本化算法结果','boundary':'云边端执行、硬件协议和在线模型修正仍需现场联调'},
-    {'task':'五：示范应用','pages':'29–30、44–46','support':'三场景五类任务、飞行验证数据、同条件评价和可下载证据报告','boundary':'合成示例仅验证软件流程，现场成果以实测记录为准'},
+    {'task':'一：三维覆盖建模','pages':page_label(TASK_PAGES[1]),'support':'场景与部署快照、既有覆盖/盲区计算、覆盖模型结果归档','boundary':'当前几何与概率基线需实测标定'},
+    {'task':'二：干扰与多站协同','pages':page_label(TASK_PAGES[2]),'support':'干扰条件记录、分来源定位/测速残差、信号质量与模型版本追溯','boundary':'误差统计不等同于已验证干扰机理或协同增益'},
+    {'task':'三：按需规划与多目标优化','pages':page_label(TASK_PAGES[3]),'support':'关联规划任务与方案快照、基准与改进试验对比','boundary':'既有有限候选寻优；大规模算法待研究接入'},
+    {'task':'四：平台研发','pages':page_label(TASK_PAGES[4]),'support':'观测与真值分离接入、数据校验、三维回放、残差反馈、版本化算法结果','boundary':'云边端执行、硬件协议和在线模型修正仍需现场联调'},
+    {'task':'五：示范应用','pages':page_label(TASK_PAGES[5]),'support':'三场景五类任务、飞行验证数据、同条件评价和可下载证据报告','boundary':'合成示例仅验证软件流程，现场成果以实测记录为准'},
 ]
 
 def digest(data):

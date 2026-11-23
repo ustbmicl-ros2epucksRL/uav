@@ -25,11 +25,18 @@ def test_research_evidence_and_pdf():
     with TestClient(app) as client:
         tasks = client.get('/api/research-analysis/tasks').json()
         assert [t['id'] for t in tasks] == list(range(1, 6))
+        from app.proposal_source import TASK_PAGES
         for task in tasks:
-            assert task['pages'] and task['scenes'] and task['solutions']
+            assert task['pages'] == TASK_PAGES[task['id']] and task['scenes'] and task['solutions']
             assert len(task['challenges']) == 3
             for c in task['challenges']:
                 assert all(c[k] for k in ['problem', 'variable', 'baseline', 'metric', 'evidence', 'failure'])
         pdf = client.get('/api/research-analysis/proposal')
         assert pdf.status_code == 200
         assert pdf.content.startswith(b'%PDF')
+
+
+def test_page_label_collapses_runs():
+    from app.proposal_source import page_label
+    assert page_label([20, 29, 36, 37, 38]) == '20、29、36–38'
+    assert page_label([22]) == '22'

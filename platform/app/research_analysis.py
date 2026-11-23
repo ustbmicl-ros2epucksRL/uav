@@ -2,7 +2,7 @@
 import json
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
-from . import store
+from . import proposal_source, store
 
 router=APIRouter()
 
@@ -18,10 +18,12 @@ def page(task_id:int,request:Request):
 
 @router.get('/api/research-analysis/tasks')
 def tasks():
-    return json.loads((store.ROOT/'static'/'research-tasks.json').read_text())
+    tasks=json.loads((store.ROOT/'static'/'research-tasks.json').read_text())
+    for task in tasks:task['pages']=proposal_source.TASK_PAGES[task['id']]
+    return tasks
 
 @router.get('/api/research-analysis/proposal')
 def proposal():
-    path=store.PROJECT/'项目申报书-面向低空经济的多模态感知网络智能规划关键技术研究及示范应用.pdf'
-    if not path.is_file():raise HTTPException(404,'当前部署未包含申请书 PDF')
+    path=proposal_source.path()
+    if not path.is_file():raise HTTPException(404,'当前部署未包含正式申请书 PDF')
     return FileResponse(path,media_type='application/pdf')
