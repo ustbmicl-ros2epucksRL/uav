@@ -150,7 +150,7 @@ def sync(ident: str):
         if action['task_id']:
             import os
             try:
-                response=httpx.post(os.getenv('LOWAIR_BASE_URL','http://127.0.0.1:8772/service').rstrip('/')+'/api/tasks/'+action['task_id']+'/sync',timeout=5,trust_env=False)
+                response=httpx.post(os.getenv('LOWAIR_BASE_URL',os.getenv('FLIGHT_BASE_URL','http://127.0.0.1:8772')+'/service').rstrip('/')+'/api/tasks/'+action['task_id']+'/sync',timeout=5,trust_env=False)
                 response.raise_for_status()
                 synced=response.json()['status']=='aborted'
             except (httpx.HTTPError,ValueError,KeyError):

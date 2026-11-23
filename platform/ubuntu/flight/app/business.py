@@ -195,7 +195,7 @@ def situation():
     snapshot = safety_snapshot()
     snapshot.update(observed_at=datetime.now(timezone.utc).isoformat(), anchor=station.config(), tasks=[], service_available=False)
     try:
-        base = os.getenv('LOWAIR_BASE_URL', 'http://127.0.0.1:8772/service').rstrip('/')
+        base = os.getenv('LOWAIR_BASE_URL', os.getenv('FLIGHT_BASE_URL', 'http://127.0.0.1:8772') + '/service').rstrip('/')
         response = httpx.get(base + '/api/tasks', timeout=2, trust_env=False)
         response.raise_for_status()
         tasks = response.json()['tasks']
