@@ -3,6 +3,8 @@ set -eu
 cd "$(dirname "$0")/.."
 if [ -n "${SENSE_PYTHON:-}" ]; then
   interpreter=$SENSE_PYTHON
+elif [ -x ../.venv/bin/python ]; then
+  interpreter=../.venv/bin/python
 elif [ -x "$HOME/Library/Caches/sensing-venv/bin/python" ]; then
   interpreter="$HOME/Library/Caches/sensing-venv/bin/python"
 else

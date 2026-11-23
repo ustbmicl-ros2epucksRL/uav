@@ -13,16 +13,16 @@
   执行：sh ubuntu/test.sh
 
 启动
-  本机页面在 iCloud 目录中。platform/.venv 里的包一旦变成“仅云端”文件，
-  bash scripts/run.sh 和 .venv/bin/python 会在 import 时永久卡住，页面表现为连不上。
-  此时改用本机缓存环境，见文末“2026-10-17 页面连不上”。
+  Python 环境在仓库根目录 uav/.venv（Python 3.12），scripts/run.sh 优先使用它；
+  SENSE_PYTHON 可指定其他环境。旧的 iCloud 卡住问题见文末“2026-10-17 页面连不上”。
   在 platform 目录运行：bash scripts/run.sh
   浏览器从地面站进入：http://127.0.0.1:8772/ ，顶栏「感知网络规划」
   同一端口的规划页：http://127.0.0.1:8772/network/
   申报书规划工作台：http://127.0.0.1:8772/network/workbench
   更换端口：SENSE_PORT=8768 bash scripts/run.sh
-  首次安装：uv pip install --python .venv/bin/python -r requirements-dev.txt
-  运行测试：.venv/bin/python -m pytest tests -q
+  首次安装（在 uav 目录）：uv venv .venv --python 3.12
+    uv pip install --python .venv/bin/python -r platform/requirements-local.txt
+  运行测试：../.venv/bin/python -m pytest tests -q（地面站、低空服务在各自目录用 ../../../.venv/bin/python）
   前端逻辑测试（服务启动后）：
     curl -fsSL http://127.0.0.1:8772/network/api/scenes/urban/report -o /tmp/lowair-report.json
     node --test tests/test_frontend.cjs tests/test_workbench.cjs

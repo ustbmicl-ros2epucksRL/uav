@@ -1,0 +1,8 @@
+# uav/.venv: runs all three platforms and their test suites on one machine.
+# Heavy optional workloads stay separate: ubuntu/flight/requirements-aoi.txt, requirements-video.txt.
+-r requirements-dev.txt
+-r requirements-algorithms.txt
+-r requirements-geodata.txt
+-r ubuntu/flight/requirements.txt
+-r ubuntu/lowair/requirements.txt
+opencv-python-headless==4.11.0.86
