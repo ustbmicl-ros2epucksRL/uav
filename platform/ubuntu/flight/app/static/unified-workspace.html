@@ -6,9 +6,9 @@
     <meta name="color-scheme" content="light">
     <title>低空统一工作台</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="/static/unified-workspace.css">
-    <script src="/static/workspace-business-links.js" defer></script>
-    <script src="/static/unified-workspace.js" defer></script>
+    <link rel="stylesheet" href="/static/unified-workspace.css?v=20261124d">
+    <script src="/static/workspace-business-links.js?v=20261124d" defer></script>
+    <script src="/static/unified-workspace.js?v=20261124d" defer></script>
 </head>
 <body>
     <div id="workspace">
@@ -19,30 +19,73 @@
                 <button id="nav-close" class="rail-close" type="button" aria-label="关闭导航">×</button>
             </header>
             <div class="rail-body">
-                <nav id="platform-list" aria-labelledby="platform-label">
-                    <h2 id="platform-label">业务平台</h2>
-                    <button type="button" data-platform="station" aria-current="page">
-                        <span class="nav-icon station-icon" aria-hidden="true"></span>区域地面站
-                    </button>
-                    <button type="button" data-platform="planning">
-                        <span class="nav-icon planning-icon" aria-hidden="true"></span>感知网络规划
-                    </button>
-                    <button type="button" data-platform="service">
-                        <span class="nav-icon service-icon" aria-hidden="true"></span>低空服务管理
-                    </button>
-                </nav>
-                <section class="library" aria-labelledby="skills-label">
-                    <h2 id="skills-label">Skill <span class="section-secondary">助手技能</span></h2>
-                    <div id="skill-list" class="library-list" aria-busy="true"><p class="rail-note">正在读取技能…</p></div>
-                </section>
-                <section class="library" aria-labelledby="algorithms-label">
-                    <h2 id="algorithms-label">航路算法</h2>
-                    <div id="algorithm-list" class="library-list">
-                        <button type="button" data-algorithm="bitstar"><span class="library-icon algorithm-icon" aria-hidden="true">ƒ</span>OMPL BIT*</button>
-                        <button type="button" data-algorithm="acs_ds"><span class="library-icon algorithm-icon" aria-hidden="true">ƒ</span>ACS-DS</button>
-                        <button type="button" data-algorithm="astar"><span class="library-icon algorithm-icon" aria-hidden="true">ƒ</span>A*</button>
+                <details class="rail-group" id="group-platforms" open>
+                    <summary class="rail-summary">
+                        <span class="summary-title">业务平台</span>
+                        <span class="group-badge" id="badge-platforms">区域地面站</span>
+                    </summary>
+                    <nav id="platform-list" class="rail-group-body" aria-label="业务平台切换">
+                        <div class="station-entry-group">
+                            <button type="button" data-platform="station" aria-current="page">
+                                <span class="nav-icon station-icon" aria-hidden="true"></span>区域地面站
+                            </button>
+                            <details class="station-subdrawer" id="station-algorithms">
+                                <summary class="subdrawer-summary">地面站航路面板快捷切换</summary>
+                                <div id="algorithm-list" class="library-list subdrawer-list">
+                                    <button type="button" data-algorithm="bitstar"><span class="library-icon algorithm-icon" aria-hidden="true">ƒ</span>OMPL BIT*</button>
+                                    <button type="button" data-algorithm="acs_ds"><span class="library-icon algorithm-icon" aria-hidden="true">ƒ</span>ACS-DS</button>
+                                    <button type="button" data-algorithm="astar"><span class="library-icon algorithm-icon" aria-hidden="true">ƒ</span>A*</button>
+                                </div>
+                            </details>
+                        </div>
+                        <button type="button" data-platform="planning">
+                            <span class="nav-icon planning-icon" aria-hidden="true"></span>感知网络规划
+                        </button>
+                        <button type="button" data-platform="service">
+                            <span class="nav-icon service-icon" aria-hidden="true"></span>低空服务管理
+                        </button>
+                    </nav>
+                </details>
+
+                <details class="rail-group" id="group-proposal">
+                    <summary class="rail-summary">
+                        <span class="summary-title">申报中心</span>
+                        <span class="group-badge" id="badge-proposal">感知规划</span>
+                    </summary>
+                    <div class="rail-group-body">
+                        <div id="planning-views" class="library-list">
+                            <button type="button" data-planning-path="/network/overview" data-short-label="研究体系"><span class="library-icon view-icon" aria-hidden="true">◈</span>研究体系与可行性</button>
+                            <button type="button" data-planning-path="/network/twin" data-short-label="数字孪生"><span class="library-icon view-icon" aria-hidden="true">◈</span>三维实景数字孪生中心</button>
+                            <button type="button" data-planning-path="/network/acceptance" data-short-label="指标验证"><span class="library-icon view-icon" aria-hidden="true">◈</span>细网格指标验证</button>
+                            <button type="button" data-planning-path="/network/tasks" data-short-label="任务流"><span class="library-icon view-icon" aria-hidden="true">◈</span>五步规划任务流</button>
+                            <button type="button" data-planning-path="/network/demonstration" data-short-label="场景示范"><span class="library-icon view-icon" aria-hidden="true">◈</span>三场景应用示范</button>
+                            <button type="button" data-planning-path="/network/" data-short-label="工作台"><span class="library-icon view-icon" aria-hidden="true">◈</span>经典覆盖与航路台</button>
+                        </div>
+                        <p class="rail-synergy" id="platform-synergy">协同边界：感知网络规划为本申报书核心平台；地面站提供航路/云边端/SITL支撑；低空服务提供任务闭环。</p>
                     </div>
-                </section>
+                </details>
+
+                <details class="rail-group" id="group-theory-skills">
+                    <summary class="rail-summary">
+                        <span class="summary-title">理论 Skill</span>
+                        <span class="group-badge" id="badge-theory-skills">立项与机理</span>
+                    </summary>
+                    <div class="rail-group-body">
+                        <p class="skill-purpose">驱动底部智能体只读核查立项体系、申报原文与五子项目 15 项确定性机理算例（防幻觉可复核）。</p>
+                        <div id="theory-skill-list" class="library-list" aria-busy="true"><p class="rail-note">正在读取理论技能…</p></div>
+                    </div>
+                </details>
+
+                <details class="rail-group" id="group-algo-skills">
+                    <summary class="rail-summary">
+                        <span class="summary-title">平台算法 Skill</span>
+                        <span class="group-badge" id="badge-algo-skills">规划与协同</span>
+                    </summary>
+                    <div class="rail-group-body">
+                        <p class="skill-purpose">驱动底部智能体调用单事务冻结快照、感知规划内核与跨平台运行证据（严格只读不控机）。</p>
+                        <div id="skill-list" class="library-list" aria-busy="true"><p class="rail-note">正在读取平台算法技能…</p></div>
+                    </div>
+                </details>
             </div>
         </aside>
         <button type="button" id="nav-scrim" aria-label="收起工作台导航" hidden></button>
@@ -59,14 +102,15 @@
                 </header>
                 <div id="business-frames"></div>
             </section>
-            <section id="chat-dock" aria-labelledby="chat-title">
+            <section id="chat-dock" class="collapsed" aria-labelledby="chat-title">
                 <div id="chat-resize" role="separator" aria-orientation="horizontal" aria-label="调整 Chat 高度" aria-controls="chat-frame" tabindex="0" title="拖动或用上下方向键调整高度"></div>
                 <header class="chat-bar">
                     <span class="chat-mark" aria-hidden="true">✦</span>
                     <h2 id="chat-title">Chat</h2>
-                    <span class="chat-name">平台助手</span>
-                    <button type="button" id="chat-toggle" class="toolbar-button" aria-controls="chat-frame" aria-expanded="true">
-                        <span id="chat-toggle-label">收起</span><span class="chevron" aria-hidden="true"></span>
+                    <span class="chat-name">只读证据智能体</span>
+                    <span class="chat-hint" id="chat-hint">点选左侧 Skill 或展开即可对话取证</span>
+                    <button type="button" id="chat-toggle" class="toolbar-button" aria-controls="chat-frame" aria-expanded="false">
+                        <span id="chat-toggle-label">展开</span><span class="chevron" aria-hidden="true"></span>
                     </button>
                 </header>
                 <iframe id="chat-frame" title="平台助手 Chat"></iframe>

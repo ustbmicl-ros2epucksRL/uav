@@ -8,18 +8,47 @@
         ['service', {label:'低空服务管理', path:'/service/'}],
     ]);
     const skillNames = new Map([
-        ['scene_snapshot', '场景与设备快照'],
-        ['diagnose_coverage', '覆盖诊断'],
-        ['planning_records', '规划任务记录'],
-        ['assessment_results', '历史验算结果'],
-        ['twin_experiment', '数字孪生对照'],
-        ['proposal_kpi', '申报指标核对'],
-        ['proposal_search', '申请书原文检索'],
-        ['flight_algorithm_runs', '在研：航路算法实验'],
-        ['flight_compute', '在研：云边端执行'],
-        ['flight_records', '在研：飞行档案'],
-        ['service_tasks', '在研：低空服务任务'],
+        ['research_framework', '研究体系与四维可行性'],
+        ['proposal_kpi', '申报考核指标口径核对'],
+        ['proposal_search', '申请书条款与页码检索'],
+        ['diagnose_coverage', '三维覆盖与薄弱区诊断'],
+        ['twin_experiment', '数字孪生五方案反事实对照'],
+        ['assessment_results', '细网格（10m/2m）规划验算'],
+        ['scene_snapshot', '场景站址与异构设备快照'],
+        ['planning_records', '按需规划任务档案核查'],
+        ['flight_algorithm_runs', '避障航路与 HEFT 算力调度'],
+        ['flight_compute', '云边端计算批次与稳定性'],
+        ['flight_records', 'SITL 仿真飞行档案核查'],
+        ['service_tasks', '低空服务任务与审批闭环'],
     ]);
+    const theorySkillIds = new Set(['research_framework', 'proposal_kpi', 'proposal_search']);
+    const planningAlgoIds = new Set(['diagnose_coverage', 'twin_experiment', 'assessment_results', 'scene_snapshot', 'planning_records']);
+    const fallbackTheoryMechanisms = [
+        {id:'theory-task-1', task_id:1, workflow:'research', title:'子项目一 · 遮挡与网格收敛机理',
+            description:'三维几何视线遮挡、共视相关性 ρ 与 10m/2m 混合网格收敛算例',
+            question:'请针对子项目一（三维覆盖），选择并运行视线遮挡、传感器相关性或 10m/2m 混合网格算例，定量说明模型假设边界。'},
+        {id:'theory-task-2', task_id:2, workflow:'research', title:'子项目二 · 干扰与协同精度机理',
+            description:'双站观测夹角 GDOP、节点间共址干扰方差与共同系统偏差算例',
+            question:'请针对子项目二（干扰与协同精度），运行观测几何夹角、节点间干扰或系统偏差算例，说明何时多站协同精度退化及理论界偏离实际误差。'},
+        {id:'theory-task-3', task_id:3, workflow:'research', title:'子项目三 · 约束优化最优性机理',
+            description:'贪心次优反例 vs 穷举最优、单站挂载容量约束与代理乐观偏差算例',
+            question:'请针对子项目三（按需规划），运行预算下贪心与穷举对照、单站容量约束或代理偏差复核算例，论证多约束联合优化与参考模型复核的必要性。'},
+        {id:'theory-task-4', task_id:4, workflow:'research', title:'子项目四 · 跨站关联与时延机理',
+            description:'乱序晚到报文、遮挡期间运动关联模糊与异常观测稳健滤波算例',
+            question:'请针对子项目四（运行平台与关联跟踪），运行样本延迟乱序、遮挡运动配对或异常值裁剪滤波算例，说明在线状态更新的适用边界。'},
+        {id:'theory-task-5', task_id:5, workflow:'research', title:'子项目五 · 残差校准与混杂检验',
+            description:'留出集域偏移校准、跨场次混杂难度与可复算证据链完整性算例',
+            question:'请针对子项目五（示范验证），运行留出集偏差校准、混杂条件对照或证据链完整性审计算例，说明如何避免过拟合与伪改进结论。'},
+    ];
+    const platformSkillPrompts = new Map([
+        ['research_framework', '请使用 research_framework 梳理本项目研究的问题、五项研究内容的输入输出关系、重要性、数字孪生必要性与四维可行性，并明确合成证据边界。'],
+        ['proposal_kpi', '请使用 proposal_kpi 核对正式申报书考核指标阈值及早期稿对照口径，说明达标判定规则。'],
+        ['proposal_search', '请使用 proposal_search 在正式申请书原文中检索“典型场景组网验证”和“多模态感知设备”相关条款并标注 PDF 页码。'],
+        ['diagnose_coverage', '请使用 diagnose_coverage 对当前冻结场景执行三维覆盖诊断，指出覆盖率与薄弱空域并说明网格口径。'],
+        ['twin_experiment', '请使用 twin_experiment 对比当前场景数字孪生中的现有部署、完整规划方案与三项反事实方案，说明各子项目必要性。'],
+        ['assessment_results', '请使用 assessment_results 核查当前场景最近的 10m/2m 细网格规划验算结果、预算费用与定位精度瓶颈。'],
+    ]);
+
     const frames = new Map();
     const navMedia = matchMedia('(max-width:820px)');
     const stage = $('business-stage');
@@ -36,13 +65,44 @@
         $('nav-toggle').setAttribute('aria-expanded', String(visible));
         $('nav-scrim').hidden = !visible;
         $('main-workspace').inert = visible;
-        if (visible) $('platform-list').querySelector('[aria-current]').focus();
-        else if (returnFocus && navMedia.matches) $('nav-toggle').focus();
+        if (visible) {
+            if ($('group-platforms')) $('group-platforms').open = true;
+            $('platform-list').querySelector('[aria-current]')?.focus();
+        } else if (returnFocus && navMedia.matches) {
+            $('nav-toggle').focus();
+        }
     }
     function setChat(open) {
         $('chat-dock').classList.toggle('collapsed', !open);
         $('chat-toggle').setAttribute('aria-expanded', String(open));
         $('chat-toggle-label').textContent = open ? '收起' : '展开';
+    }
+    function syncRailGroups(key, pathname) {
+        const groupPlatforms = $('group-platforms');
+        const groupProposal = $('group-proposal');
+        const badgePlatforms = $('badge-platforms');
+        const badgeProposal = $('badge-proposal');
+        const stationDrawer = $('station-algorithms');
+        if (badgePlatforms) badgePlatforms.textContent = platforms.get(key)?.label || '';
+        let activeSubviewLabel = '6 项视图';
+        const planningViews = $('planning-views');
+        if (planningViews) {
+            for (const button of planningViews.querySelectorAll('[data-planning-path]')) {
+                const match = key === 'planning' && pathname === button.dataset.planningPath;
+                button.classList.toggle('active-subview', match);
+                if (match) activeSubviewLabel = button.dataset.shortLabel || button.textContent.trim();
+            }
+        }
+        if (badgeProposal) badgeProposal.textContent = key === 'planning' ? activeSubviewLabel : '感知规划';
+        if (groupPlatforms) {
+            groupPlatforms.classList.toggle('is-active-group', key !== 'planning');
+            if (key !== 'planning') groupPlatforms.open = true;
+        }
+        if (groupProposal) {
+            groupProposal.classList.toggle('is-active-group', key === 'planning');
+            if (key === 'planning') groupProposal.open = true;
+        }
+        if (stationDrawer && key !== 'station') stationDrawer.open = false;
     }
     function sendChatContext() {
         if (!chatReady) return;
@@ -57,7 +117,10 @@
     }
     function sendSkill() {
         if (!chatReady || !pendingSkill) return;
-        chat.contentWindow.postMessage({type:'workbench-skill', skill:pendingSkill.name, question:pendingSkill.question, workflow:'platform'}, origin);
+        const message = {type:'workbench-skill', workflow:pendingSkill.workflow, question:pendingSkill.question};
+        if (pendingSkill.skill) message.skill = pendingSkill.skill;
+        if (pendingSkill.taskId !== undefined) message.taskId = pendingSkill.taskId;
+        chat.contentWindow.postMessage(message, origin);
         pendingSkill = null;
     }
     function sendSegment() {
@@ -136,7 +199,11 @@
             try {
                 const doc = frame.contentDocument;
                 if (frame.dataset.frame === 'planning') {
-                    if (active === 'planning') sendChatContext();
+                    if (active === 'planning') {
+                        sendChatContext();
+                        const loadedUrl = currentFrameUrl(frame);
+                        if (loadedUrl) syncRailGroups('planning', new URL(loadedUrl).pathname);
+                    }
                     const scene = doc?.querySelector('select#scene');
                     if (scene && !scene.options.length) {
                         // Planning populates this control asynchronously after the document loads.
@@ -184,6 +251,7 @@
             if (button.dataset.platform === key) button.setAttribute('aria-current', 'page');
             else button.removeAttribute('aria-current');
         }
+        syncRailGroups(key, url.pathname);
         $('stage-title').textContent = platforms.get(key).label;
         if (addHistory && changed) {
             const hostUrl = new URL(location.href);
@@ -201,52 +269,134 @@
         const current = frame && currentFrameUrl(frame);
         const onStationPage = current && new URL(current).pathname === '/station' && !new URL(current).searchParams.has('twin_experiment');
         switchPlatform('station', onStationPage ? null : '/station');
+        if ($('station-algorithms')) $('station-algorithms').open = true;
         sendAlgorithm();
     }
-    function selectSkill(name) {
+    function selectPlatformSkill(name) {
         const title = skillNames.get(name) || name;
         pendingSkill = {
-            name,
-            question:'请使用 ' + name + ' 核对当前场景的「' + title + '」，并引用本次工具证据。',
+            workflow: 'platform',
+            skill: name,
+            question: platformSkillPrompts.get(name) || ('请使用 ' + name + ' 核对当前场景的「' + title + '」，并引用本次工具证据。'),
         };
         setNav(false);
         setChat(true);
         sendChatContext();
         sendSkill();
-        notify('已选择「' + title + '」，请在 Chat 中确认问题。');
+        notify('已选择平台技能「' + title + '」，请在 Chat 中确认问题。');
+    }
+    function selectTheoryMechanismSkill(spec) {
+        pendingSkill = {
+            workflow: 'research',
+            taskId: spec.task_id,
+            question: spec.question,
+        };
+        setNav(false);
+        setChat(true);
+        sendChatContext();
+        sendSkill();
+        notify('已选择理论机理技能「' + spec.title + '」，请在 Chat 中确认问题。');
+    }
+    function makeSubgroupHeading(text) {
+        const heading = document.createElement('p');
+        heading.className = 'skill-subgroup-label';
+        heading.textContent = text;
+        return heading;
+    }
+    function makeSkillButton({key, title, description, iconKind, onClick, attrName = 'skill'}) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.dataset[attrName] = key;
+        button.title = description || title;
+        const icon = document.createElement('span');
+        icon.className = iconKind === 'theory' ? 'library-icon theory-icon' : 'library-icon skill-icon';
+        icon.setAttribute('aria-hidden', 'true');
+        if (iconKind === 'theory') icon.textContent = '∑';
+        button.append(icon, document.createTextNode(title));
+        button.addEventListener('click', onClick);
+        return button;
     }
     async function loadSkills() {
-        const list = $('skill-list');
-        list.setAttribute('aria-busy','true');
+        const theoryList = $('theory-skill-list');
+        const algoList = $('skill-list');
+        theoryList?.setAttribute('aria-busy', 'true');
+        algoList.setAttribute('aria-busy', 'true');
         try {
             const response = await fetch('/network/api/research-agent/tools');
             if (!response.ok) throw Error(String(response.status));
-            const {tools} = await response.json();
+            const payload = await response.json();
+            const tools = payload?.tools;
             if (!Array.isArray(tools)) throw Error('invalid catalog');
-            const buttons = [];
+            const mechanisms = Array.isArray(payload.theory_mechanisms) && payload.theory_mechanisms.length
+                ? payload.theory_mechanisms
+                : fallbackTheoryMechanisms;
+
+            const theoryDocButtons = [];
+            const planningAlgoButtons = [];
+            const collabAlgoButtons = [];
             for (const tool of tools) {
                 if (tool.effects !== 'read_only' || typeof tool.name !== 'string') continue;
-                const button = document.createElement('button');
-                button.type = 'button';
-                button.dataset.skill = tool.name;
                 const title = skillNames.get(tool.name) || tool.name;
-                button.title = tool.description || title;
-                const icon = document.createElement('span');
-                icon.className = 'library-icon skill-icon';
-                icon.setAttribute('aria-hidden','true');
-                button.append(icon, document.createTextNode(title));
-                button.addEventListener('click', () => selectSkill(tool.name));
-                buttons.push(button);
+                const category = tool.category || (theorySkillIds.has(tool.name) ? 'theory' : planningAlgoIds.has(tool.name) ? 'platform_planning' : 'platform_collab');
+                const btn = makeSkillButton({
+                    key: tool.name,
+                    title,
+                    description: tool.description || title,
+                    iconKind: category === 'theory' ? 'theory' : 'algo',
+                    onClick: () => selectPlatformSkill(tool.name),
+                });
+                if (category === 'theory') theoryDocButtons.push(btn);
+                else if (category === 'platform_planning') planningAlgoButtons.push(btn);
+                else collabAlgoButtons.push(btn);
             }
-            list.replaceChildren(...buttons);
-            if (!buttons.length) list.textContent = '暂无可用技能';
+
+            if (theoryList) {
+                const theoryNodes = [];
+                if (theoryDocButtons.length) {
+                    theoryNodes.push(makeSubgroupHeading('立项体系与申报依据'), ...theoryDocButtons);
+                }
+                const mechanismButtons = mechanisms
+                    .filter(item => Number.isInteger(item.task_id) && item.task_id >= 1 && item.task_id <= 5)
+                    .map(item => makeSkillButton({
+                        key: item.id || ('theory-task-' + item.task_id),
+                        title: item.title,
+                        description: item.description,
+                        iconKind: 'theory',
+                        attrName: 'theorySkill',
+                        onClick: () => selectTheoryMechanismSkill(item),
+                    }));
+                if (mechanismButtons.length) {
+                    theoryNodes.push(makeSubgroupHeading('五子项目数学机理算例'), ...mechanismButtons);
+                }
+                theoryList.replaceChildren(...theoryNodes);
+                if (!theoryNodes.length) theoryList.textContent = '暂无理论技能';
+                const badgeTheory = $('badge-theory-skills');
+                if (badgeTheory) badgeTheory.textContent = `立项与机理 · ${theoryDocButtons.length + mechanismButtons.length}`;
+            }
+
+            const algoNodes = [];
+            if (planningAlgoButtons.length) {
+                algoNodes.push(makeSubgroupHeading('感知网络规划核心算法'), ...planningAlgoButtons);
+            }
+            if (collabAlgoButtons.length) {
+                algoNodes.push(makeSubgroupHeading('航路与云边端协同算法'), ...collabAlgoButtons);
+            }
+            algoList.replaceChildren(...algoNodes);
+            if (!algoNodes.length) algoList.textContent = '暂无可用平台算法技能';
+            const badgeAlgo = $('badge-algo-skills');
+            if (badgeAlgo) badgeAlgo.textContent = `规划与协同 · ${planningAlgoButtons.length + collabAlgoButtons.length}`;
         } catch {
-            const retry = document.createElement('button');
-            retry.type = 'button';
-            retry.textContent = '技能未加载 · 重试';
-            retry.addEventListener('click', loadSkills, {once:true});
-            list.replaceChildren(retry);
-        } finally { list.setAttribute('aria-busy','false'); }
+            for (const target of [theoryList, algoList].filter(Boolean)) {
+                const retry = document.createElement('button');
+                retry.type = 'button';
+                retry.textContent = '技能未加载 · 重试';
+                retry.addEventListener('click', loadSkills, {once:true});
+                target.replaceChildren(retry);
+            }
+        } finally {
+            theoryList?.setAttribute('aria-busy', 'false');
+            algoList.setAttribute('aria-busy', 'false');
+        }
     }
 
     window.addEventListener('message', event => {
@@ -352,6 +502,9 @@
     new ResizeObserver(syncGrip).observe($('chat-dock'));
     for (const button of $('platform-list').querySelectorAll('[data-platform]')) {
         button.addEventListener('click', () => switchPlatform(button.dataset.platform));
+    }
+    for (const button of $('planning-views')?.querySelectorAll('[data-planning-path]') || []) {
+        button.addEventListener('click', () => switchPlatform('planning', button.dataset.planningPath));
     }
     for (const button of $('algorithm-list').querySelectorAll('[data-algorithm]')) {
         button.addEventListener('click', () => selectAlgorithm(button.dataset.algorithm));

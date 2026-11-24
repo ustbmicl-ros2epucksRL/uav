@@ -19,9 +19,9 @@ if (['urban','corridor','electromagnetic'].includes(initialScene)) $('scene').va
 let record = null, timer = null, generation = 0;
 let lastPlanningScene = null, pendingPlanningScene = null;
 let selectedSkill = null;
-let segmentRef = null, segmentLoaded = false;
+let segmentRef = null, segmentLoaded = false, segmentScene = 'urban';
 let busy = false;
-const nav = {tasks:'规划任务',resources:'资源配置',diagnosis:'感知诊断',planning:'网络规划',plans:'方案管理',demonstration:'示范应用',research:'研究问题',agents:'研究智能体','agents/manage':'智能体管理'};
+const nav = {overview:'研究总览',tasks:'规划任务',resources:'资源配置',diagnosis:'感知诊断',planning:'网络规划',plans:'方案管理',acceptance:'任务验证',twin:'数字孪生',demonstration:'示范应用',research:'研究问题',agents:'研究智能体','agents/manage':'智能体管理'};
 for (const [key,label] of Object.entries(nav)) {
     const a = document.createElement('a');
     a.href = root + '/' + key; a.textContent = label;
@@ -50,6 +50,7 @@ const sceneNames = {urban:'园区高密度建筑区', corridor:'物流主干道�
 const taskNames = ['三维覆盖', '干扰与协同', '按需规划', '运行平台', '示范验证'];
 const workspaceNames = {station:'区域地面站', planning:'感知网络规划', service:'低空服务管理'};
 const platformToolNames = {
+    research_framework:'研究体系总览',
     scene_snapshot:'场景配置', diagnose_coverage:'覆盖诊断', planning_records:'规划任务',
     assessment_results:'历史验算', twin_experiment:'孪生实验', proposal_kpi:'申报指标',
     proposal_search:'申请书原文', flight_algorithm_runs:'航路算法', flight_compute:'云边端执行',
@@ -61,6 +62,7 @@ const toolNames = {
 };
 const statusNames = {running:'进行中', completed:'已完成', failed:'失败', cancelled:'已停止', interrupted:'中断'};
 const provenanceNames = {
+    research_framework_summary:'研究体系与平台汇总',
     configuration_snapshot:'配置快照', synthetic_calculation:'合成计算', stored_records:'业务记录',
     stored_simulation_results:'历史仿真记录', synthetic_twin_experiment:'合成孪生记录',
     proposal_document:'申报书', synthetic_only:'合成算例', flight_platform_records:'在研平台记录'
@@ -92,15 +94,18 @@ function updateSegmentHistory(restoreRun=false) {
 function clearSegment() {
     segmentRef = null;
     segmentLoaded = false;
+    segmentScene = 'urban';
     $('segment-panel').hidden = true;
     updateSegmentScope();
     controls(busy);
     updateSegmentHistory();
     window.parent.postMessage({type:'workbench-clear-twin-segment'}, location.origin);
 }
+const shortSceneNames = {urban:'建筑区', corridor:'物流廊道', electromagnetic:'复杂电磁区'};
 function renderSegmentArchive(archive, segment) {
     const timeline = archive.inputs.trajectory;
-    $('segment-label').textContent = '建筑区 · ' + timeline.id + ' · ' + segment.start_s + '–' + segment.end_s + ' 秒';
+    const shortScene = shortSceneNames[archive.inputs?.scene?.id] || '建筑区';
+    $('segment-label').textContent = shortScene + ' · ' + timeline.id + ' · ' + segment.start_s + '–' + segment.end_s + ' 秒';
     $('segment-status').textContent = '合成孪生 · ' + segment.sample_count + ' 个采样点 · 档案 ' +
         archive.id.slice(0,8) + (archive.scene_changed ? ' · 当前场景已有更新，使用归档快照' : '');
     $('segment-chat').append(node('p','当前提问将引用此选段。可查看执行步骤、同预算证据和本段历史。'));
@@ -142,7 +147,8 @@ function renderSegmentArchive(archive, segment) {
     evidence.append(meta, segmentSourceLink(segment));
 
     const history = $('segment-history');
-    history.append(node('h3','实验档案'), node('p', localTime(archive.created_at) + ' · 建筑区实验已归档 · ' + archive.id));
+    const histScene = shortSceneNames[archive.inputs?.scene?.id] || '建筑区';
+    history.append(node('h3','实验档案'), node('p', localTime(archive.created_at) + ' · ' + histScene + '实验已归档 · ' + archive.id));
     const check = archive.reproducibility;
     history.append(node('p', check ? localTime(check.checked_at) + ' · 复算' +
         (check.matches && check.input_matches ? '一致' : '存在差异') : '尚无复算记录。'), node('h3','本段智能体历史'));
@@ -171,6 +177,7 @@ async function openSegment({experimentId, start, end}) {
         if (segmentRef !== ref) return;
         if (!sameSegment(ref, segment) || archive.result_digest !== segment.result_digest ||
             archive.input_digest !== segment.input_digest) throw Error('区段和档案摘要不一致');
+        segmentScene = archive.inputs?.scene?.id || 'urban';
         renderSegmentArchive(archive, segment);
         segmentLoaded = true;
         updateSegmentHistory(true);
@@ -271,7 +278,8 @@ function node(tag, value) {
 function scopeOf(request) {
     if (request.twin_segment && validSegmentRef(request.twin_segment)) {
         const ref = request.twin_segment;
-        return '建筑区 · ' + ref.experiment_id.slice(0,8) + ' · 采样 ' + ref.start + '–' + ref.end;
+        const shortScene = shortSceneNames[request.scene] || '建筑区';
+        return shortScene + ' · ' + ref.experiment_id.slice(0,8) + ' · 采样 ' + ref.start + '–' + ref.end;
     }
     if (request.workflow === 'platform') return sceneNames[request.scene] || '场景未记录';
     return '研究子任务 ' + (request.task_id || '未记录') + (taskNames[request.task_id - 1] ? ' · ' + taskNames[request.task_id - 1] : '');
@@ -319,6 +327,9 @@ function report(id, result, data) {
 function evidenceSummary(item) {
     const result = item.result || {};
     const data = result.data || {};
+    if (item.tool === 'research_framework') {
+        return '五子项目关系与四维可行性 · 指标口径 ' + (data.project?.kpi_version || '当前');
+    }
     if (item.tool === 'proposal_search') {
         return data.passages?.length ? '申请书原文 ' + data.passages.length + ' 段 · 第 ' + data.passages.map(p => p.page).join('、') + ' 页' : (data.note || '未检索到相关原文');
     }
@@ -493,7 +504,7 @@ $('run').onclick = async () => {
         const request = {question, task_id:Number($('task').value),
             mode:$('mode').value, workflow:$('workflow').value, scene:$('scene').value};
         if (docked && selectedSkill && request.workflow === 'platform') request.skill = selectedSkill;
-        if (segmentRef) Object.assign(request, {workflow:'platform', scene:'urban', skill:'twin_experiment', twin_segment:segmentRef});
+        if (segmentRef) Object.assign(request, {workflow:'platform', scene:segmentScene, skill:'twin_experiment', twin_segment:segmentRef});
         const data = await api('runs', request);
         if (version !== generation) return;
         if (docked) {

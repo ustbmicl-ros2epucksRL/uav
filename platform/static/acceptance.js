@@ -1,6 +1,10 @@
 'use strict';
 const root = location.pathname.startsWith('/network') ? '/network' : '';
 const $ = id => document.getElementById(id);
+if (typeof window !== 'undefined' && window.parent && window.parent !== window &&
+    (window.frameElement?.dataset?.frame === 'planning' || new URLSearchParams(location.search || '').get('workbench') === '1')) {
+    document.body?.classList?.add?.('workbench-embedded');
+}
 const escapeHtml = value => String(value ?? '').replace(/申请书|申报书/g, '任务').replace(/[&<>"']/g, character => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[character]));
 const percent = value => value == null ? '无有效样本' : (value * 100).toFixed(2) + '%';
 const difference = (before, after) => before == null || after == null ? '无有效样本' : ((after-before)*100).toFixed(3);
@@ -337,6 +341,6 @@ async function initialize() {
     $('task-select').innerHTML = tasks.map(item => `<option value="${item.id}">${escapeHtml(item.name)}</option>`).join('') || '<option>尚无任务</option>';
     await selectTask(query.get('task') || localStorage.getItem('planning-task'), query.get('assessment'));
 }
-$('navigation').innerHTML = Object.entries({tasks:'规划任务', resources:'资源配置', diagnosis:'感知诊断', planning:'网络规划', plans:'方案管理', acceptance:'任务验证', twin:'研究必要性孪生', research:'研究问题', demonstration:'示范应用'}).map(([path,label]) => `<a href="${root}/${path}" class="${path === 'acceptance' ? 'active' : ''}">${label}</a>`).join('');
+$('navigation').innerHTML = Object.entries({overview:'研究总览', tasks:'规划任务', resources:'资源配置', diagnosis:'感知诊断', planning:'网络规划', plans:'方案管理', acceptance:'任务验证', twin:'研究必要性孪生', research:'研究问题', demonstration:'示范应用'}).map(([path,label]) => `<a href="${root}/${path}" class="${path === 'acceptance' ? 'active' : ''}">${label}</a>`).join('');
 window.addEventListener('beforeunload', () => {clearTimeout(timer); viewer?.destroy(); flightViewer?.destroy();});
 perform(initialize);

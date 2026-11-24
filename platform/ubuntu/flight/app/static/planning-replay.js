@@ -24,8 +24,9 @@
         const track = record.inputs?.trajectory;
         const points = track?.points;
         const times = track?.times;
-        if (record.id !== experimentId || record.evidence_level !== 'synthetic_twin' || record.inputs.scene.id !== 'urban') {
-            throw Error('此入口需要建筑区合成孪生档案。');
+        if (record.id !== experimentId || record.evidence_level !== 'synthetic_twin' ||
+            !['urban', 'corridor', 'electromagnetic'].includes(record.inputs?.scene?.id)) {
+            throw Error('此入口需要已归档的合成数字孪生实验档案。');
         }
         if (!Array.isArray(points) || !points.length || !Array.isArray(times) || times.length !== points.length ||
             points.some(p => !Array.isArray(p) || p.length !== 3 || !p.every(Number.isFinite)) ||

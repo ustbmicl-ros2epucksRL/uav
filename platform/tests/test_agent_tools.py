@@ -21,7 +21,10 @@ def client(tmp_path, monkeypatch):
 
 def test_catalog_scope_and_unknown_commands(client):
     catalog = client.get('/api/research-agent/tools').json()
-    assert len(catalog['tools']) == len(tools.DESCRIPTIONS) == 11
+    assert len(catalog['tools']) == len(tools.DESCRIPTIONS) == 12
+    assert {t['category'] for t in catalog['tools']} == {'theory', 'platform_planning', 'platform_collab'}
+    assert [m['task_id'] for m in catalog['theory_mechanisms']] == [1, 2, 3, 4, 5]
+    assert set(catalog['skill_taxonomy']) == {'theory', 'platform_algorithm'}
     assert all(t['effects'] == 'read_only' for t in catalog['tools'])
     for path in ('arm', 'apply_plan'):
         assert client.post('/api/research-agent/tools/' + path, json={'scene': 'urban'}).status_code == 422
@@ -113,8 +116,17 @@ def test_twin_and_kpi_tools_report_missing_evidence_then_latest_summary(client):
     data = evidence['data']
     assert evidence['provenance'] == 'synthetic_twin_experiment' and data['scene_revision_matches']
     assert [p['id'] for p in data['research_points']] == [1, 2, 3, 4, 5]
-    assert {row['key'] for row in data['deployments']} == {'baseline', 'method', 'ignore_occlusion', 'ignore_interference'}
+    assert {row['key'] for row in data['deployments']} == {
+        'baseline', 'method', 'ignore_occlusion', 'ignore_interference', 'coverage_only',
+    }
     assert any('外场' in note for note in evidence['limitations'])
+    framework = tools.execute('research_framework', tools.snapshot({'scene': 'urban'}))
+    assert framework['provenance'] == 'research_framework_summary'
+    assert len(framework['data']['scientific_questions']) == 4
+    assert [sp['id'] for sp in framework['data']['subprojects']] == [1, 2, 3, 4, 5]
+    assert len(framework['data']['feasibility']) == 4
+    assert framework['data']['scene_evidence']['latest_twin']['available'] is True
+    assert any('外场实测' in note for note in framework['limitations'])
     kpi = tools.execute('proposal_kpi', tools.snapshot({'scene': 'urban'}))['data']
     assert kpi['current'] == proposal_kpi.CURRENT and kpi['historical']['decides_pass'] is False
 

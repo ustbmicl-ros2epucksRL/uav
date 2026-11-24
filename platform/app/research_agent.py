@@ -138,7 +138,8 @@ async def execute_platform(record):
             'question': record['request']['question'], 'scene': record['request']['scene'],
             'tools': agent_tools.DESCRIPTIONS,
             'instruction': '选择 1 至 4 个不同的只读工具；场景由用户指定，不可修改。'
-                           '问到研究内容的重要性、必要性、子项目关系或方法效果时选 twin_experiment；'
+                           '问到研究问题、研究内容关系、重要性、必要性、可行性或多平台协同架构时优先选 research_framework，并可配合 twin_experiment；'
+                           '问到具体航段或方法反事实数值时选 twin_experiment；'
                            '问到考核指标或是否达标时选 proposal_kpi，并配合 assessment_results。'
                            '问到申请书写了什么、条款原文或页码时选 proposal_search。'
                            '问到在研项目的航路规划、云边端调度、飞行档案或低空服务任务时，选对应的 flight_algorithm_runs、'
@@ -320,11 +321,45 @@ async def start(request:RunRequest):
     return record
 
 
+THEORY_MECHANISM_SKILLS = [
+    dict(id='theory-task-1', task_id=1, workflow='research', category='theory_mechanism',
+         title='子项目一 · 遮挡与网格收敛机理',
+         description='运行三维几何视线遮挡、共视相关性 ρ 与 10m/2m 混合网格收敛算例（1-0 至 1-2）。',
+         question='请针对子项目一（三维覆盖），选择并运行视线遮挡、传感器相关性或 10m/2m 混合网格算例，定量说明模型假设边界。'),
+    dict(id='theory-task-2', task_id=2, workflow='research', category='theory_mechanism',
+         title='子项目二 · 干扰与协同精度机理',
+         description='运行双站观测夹角 GDOP、节点间共址干扰方差与共同系统偏差算例（2-0 至 2-2）。',
+         question='请针对子项目二（干扰与协同精度），运行观测几何夹角、节点间干扰或系统偏差算例，说明何时多站协同精度退化及理论界偏离实际误差。'),
+    dict(id='theory-task-3', task_id=3, workflow='research', category='theory_mechanism',
+         title='子项目三 · 约束优化最优性机理',
+         description='运行贪心次优反例 vs 穷举最优、单站挂载容量约束与代理乐观偏差算例（3-0 至 3-2）。',
+         question='请针对子项目三（按需规划），运行预算下贪心与穷举对照、单站容量约束或代理偏差复核算例，论证多约束联合优化与参考模型复核的必要性。'),
+    dict(id='theory-task-4', task_id=4, workflow='research', category='theory_mechanism',
+         title='子项目四 · 跨站关联与时延机理',
+         description='运行乱序晚到报文、遮挡期间运动关联模糊与异常观测稳健滤波算例（4-0 至 4-2）。',
+         question='请针对子项目四（运行平台与关联跟踪），运行样本延迟乱序、遮挡运动配对或异常值裁剪滤波算例，说明在线状态更新的适用边界。'),
+    dict(id='theory-task-5', task_id=5, workflow='research', category='theory_mechanism',
+         title='子项目五 · 残差校准与混杂检验',
+         description='运行留出集域偏移校准、跨场次混杂难度与可复算证据链完整性算例（5-0 至 5-2）。',
+         question='请针对子项目五（示范验证），运行留出集偏差校准、混杂条件对照或证据链完整性审计算例，说明如何避免过拟合与伪改进结论。'),
+]
+
+
 @router.get('/api/research-agent/tools')
 def tools_catalog():
-    return dict(version=1, tools=agent_tools.catalog(), execution='read_only',
-                limits={'max_tools_per_run': 4, 'platform_run_timeout_seconds': 600},
-                note='普通 HTTP/JSON 工具接口，非 MCP 服务；框架调用应保留证据对象。')
+    return dict(
+        version=1,
+        purpose='以受控工作流绑定确定性算子、单事务冻结快照与 ev-... 证据摘要引用，防止大模型空谈或虚构数值；全部只读运行。',
+        skill_taxonomy=dict(
+            theory=dict(label='理论 Skill', summary='立项体系、考核指标/原文页码核查与五子项目 15 个确定性数学机理算例'),
+            platform_algorithm=dict(label='平台算法 Skill', summary='感知网络覆盖/数字孪生/细网格规划算法与跨平台航路/云边端运行证据'),
+        ),
+        theory_mechanisms=THEORY_MECHANISM_SKILLS,
+        tools=agent_tools.catalog(),
+        execution='read_only',
+        limits={'max_tools_per_run': 4, 'platform_run_timeout_seconds': 600},
+        note='普通 HTTP/JSON 工具接口，非 MCP 服务；框架调用应保留证据对象。',
+    )
 
 
 @router.post('/api/research-agent/tools/{name}')

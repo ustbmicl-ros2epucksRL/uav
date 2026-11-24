@@ -93,8 +93,9 @@ def test_mavlink_stays_listen_only_until_a_real_heartbeat(api):
 
 
 def test_planning_workflow_mounted_pages_and_task(api):
-    for page in ('tasks','resources','diagnosis','planning','plans'):
+    for page in ('overview','tasks','resources','diagnosis','planning','plans','twin'):
         assert api.get('/network/'+page).status_code == 200
+    assert api.get('/network/api/research-overview').status_code == 200
     assert api.get('/network/static/portal.js').status_code == 200
     result=api.post('/network/api/workflow/tasks',json={'name':'挂载路径验证','scene':'urban'})
     assert result.status_code == 200, result.text

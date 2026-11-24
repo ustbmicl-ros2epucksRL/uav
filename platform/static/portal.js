@@ -1,7 +1,8 @@
 'use strict';
 const root=location.pathname.startsWith('/network')?'/network':'',page=location.pathname.split('/').filter(Boolean).pop()||'tasks';
+if(typeof window!=='undefined'&&window.parent&&window.parent!==window&&(window.frameElement?.dataset?.frame==='planning'||new URLSearchParams(location.search||'').get('workbench')==='1'))document.body?.classList?.add?.('workbench-embedded');
 const $=id=>document.getElementById(id),esc=x=>String(x??'').replace(/申请书|申报书/g,'任务').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const titles={tasks:'规划任务',resources:'资源配置',diagnosis:'感知诊断',planning:'网络规划',plans:'方案管理',acceptance:'任务验证',demonstration:'示范应用','data-cabinet':'数据安全柜',research:'研究问题',agents:'研究智能体',learning:'课程学习'};
+const titles={overview:'研究总览',tasks:'规划任务',resources:'资源配置',diagnosis:'感知诊断',planning:'网络规划',plans:'方案管理',acceptance:'任务验证',twin:'数字孪生',demonstration:'示范应用','data-cabinet':'数据安全柜',research:'研究问题',agents:'研究智能体',learning:'课程学习'};
 let tasks=[],task=null,res=null,scenes=[],editing=null,siteEditing=null,deviceEditing=null,mapViews=[],dirty=false,busy=false;
 function clearMaps(){for(const v of mapViews)v.destroy();mapViews=[];}
 function changed(){dirty=true;$('dirty').textContent='有未保存修改，离开前请保存全部资源';}

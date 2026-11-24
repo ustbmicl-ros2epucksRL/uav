@@ -142,3 +142,65 @@ def test_segment_clips_gaps_and_keeps_common_budget_separate_from_equal_spend(cl
     assert client.get(path, params={'start': 75, 'end': 75}).json()['sample_count'] == 1
     for start, end in ((80, 68), (0, 121), (-1, 0)):
         assert client.get(path, params={'start': start, 'end': end}).status_code == 422
+
+
+@pytest.mark.parametrize('scene_id', ['corridor', 'electromagnetic'])
+def test_multi_scene_twin_experiments_and_coverage_only_counterfactual(client, scene_id):
+    scene = seed(scene_id)
+    volume = core.Volume(**twin.scene_profile(scene_id)['environment'])
+    points = twin.planning_points(twin.scene_profile(scene_id)['planning_space'])
+    choices = twin.options(scene)
+    cov_model = twin.PlannerModel(scene, volume, choices, points, coverage_only=True)
+    ids = [choices[0]['id'], choices[10]['id']]
+    full = core.fields(dict(scene, devices=scene['devices'] + [o for o in choices if o['id'] in ids]), points, volume)
+    assert cov_model.score(ids) == int(((full['pd'] >= volume.pd_threshold) & full['valid']).sum())
+
+    created = client.post('/api/twin-experiments', json={'scene': scene_id, 'seed_count': 4}).json()
+    assert created['inputs']['scene']['id'] == scene_id
+    assert {row['key'] for row in created['result']['deployments']} == {
+        'baseline', 'method', 'ignore_occlusion', 'ignore_interference', 'coverage_only',
+    }
+    filtered = client.get('/api/twin-experiments', params={'scene': scene_id}).json()['experiments']
+    assert filtered and all(item['scene'] == scene_id for item in filtered)
+    assert client.get('/api/twin-experiments', params={'scene': 'invalid'}).status_code == 422
+    seg = client.get(f"/api/twin-experiments/{created['id']}/segment", params={'start': 10, 'end': 25})
+    assert seg.status_code == 200 and seg.json()['scene'] == scene_id and seg.json()['sample_count'] == 16
+
+
+def test_unified_twin_catalog_real_buildings_occlusion_and_four_modes(client):
+    cat = client.get('/api/twin-catalog').json()
+    assert [s['id'] for s in cat['scenes']] == ['urban', 'corridor', 'electromagnetic']
+    assert {b['id'] for b in cat['building_sources']} == {'synthetic', 'xiongan_gba', 'beijing_osm'}
+    assert [m['id'] for m in cat['modes']] == ['counterfactual', 'coverage', 'precision', 'flight']
+
+    real_exp = client.post('/api/twin-experiments', json={
+        'scene': 'urban', 'building_source': 'xiongan_gba', 'seed_count': 4,
+    }).json()
+    assert real_exp['inputs']['scene']['building_source'] == 'xiongan_gba'
+    assert len(real_exp['inputs']['scene']['buildings']) > 20
+    # Real building experiments do not overwrite the baseline synthetic latest summary
+    assert store.get('twin-experiment-latest:urban') is None
+    recheck = client.post(f"/api/twin-experiments/{real_exp['id']}/recompute").json()
+    assert recheck['matches'] and recheck['input_matches']
+
+    cf = client.post('/api/twin-space', json={
+        'mode': 'counterfactual', 'experiment_id': real_exp['id'], 'deployment': 'method',
+    }).json()
+    assert cf['building_source'] == 'xiongan_gba' and len(cf['footprints']) > 20
+    assert len(cf['ellipsoids']) == len(real_exp['inputs']['trajectory']['points'])
+
+    cov = client.post('/api/twin-space', json={
+        'mode': 'coverage', 'experiment_id': real_exp['id'], 'deployment': 'method', 'altitude_m': 95, 'cell_m': 100,
+    }).json()
+    assert cov['voxels'] and 0 <= cov['stats']['coverage'] <= 1
+
+    prec = client.post('/api/twin-space', json={
+        'mode': 'precision', 'scene': 'electromagnetic', 'building_source': 'beijing_osm', 'altitude_m': 95, 'cell_m': 100,
+    }).json()
+    assert prec['building_source'] == 'beijing_osm' and prec['footprints'] and prec['voxels']
+
+    flt = client.post('/api/twin-space', json={
+        'mode': 'flight', 'experiment_id': real_exp['id'], 'deployment': 'method',
+    }).json()
+    assert len(flt['tracks']) >= 3
+    assert all('coverage_rate' in tr['summary'] and len(tr['samples']) == len(tr['points']) for tr in flt['tracks'])

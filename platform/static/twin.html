@@ -2,93 +2,154 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="icon" href="data:,"><title>研究必要性数字孪生</title>
-<link rel="stylesheet" href="static/portal.css"><link rel="stylesheet" href="static/twin.css">
+<link rel="icon" href="data:,"><title>低空多模态感知三维数字孪生中心</title>
+<link rel="stylesheet" href="static/portal.css?v=20261124d"><link rel="stylesheet" href="static/twin.css?v=20261124d">
+<script type="importmap">{"imports":{"three":"./static/vendor/three/three.module.js"}}</script>
 </head>
 <body>
-<header><div><h1>研究必要性数字孪生 · 建筑区</h1><p>同一参考轨迹、同一参考环境、同一组随机种子下，比较现有部署、方法方案与反事实方案</p></div><a href="./">三维工作台 ↗</a></header>
+<header>
+  <div>
+    <h1 id="page-title">低空多模态感知三维数字孪生中心 · 建筑区</h1>
+    <p>统一实景三维底座（真实卫星底图 · 雄安/高层真实建筑遮挡 · 异构基站波束 · 三维 CRLB 误差椭球 · 跨平台航路联动）</p>
+  </div>
+  <div class="header-links"><a href="overview">研究体系与可行性 →</a><a href="./">经典工作台 ↗</a></div>
+</header>
 <nav id="navigation" aria-label="平台功能"></nav>
 <div class="twin-layout">
 <main>
 <div class="context" id="context"></div>
-<p class="evidence-banner">合成孪生 · 设备、建筑与参考航线均来自模型。航段结果用于比较规划方法，现场精度与空域体积覆盖率需分别验证。</p>
-<p id="status" role="status">正在读取实验档案…</p>
+<p class="evidence-banner">统一实景数字孪生 · 支持切换真实地理建筑轮廓直接参与后端三维射线遮挡与 CRLB 计算；物理参数与量测噪声仍为合成仿真模型，外场精度须经实飞标定核验。</p>
+<p id="status" role="status">正在读取数字孪生档案…</p>
 
 <section class="card" id="settings">
-<h2>实验设置</h2>
-<div class="settings-row">
-<label>新增预算（万元）<input id="budget" type="number" min="1" max="500" step="1" value="50"></label>
-<label>随机种子数<input id="seeds" type="number" min="4" max="64" step="1" value="20"></label>
-<label>定位误差门限（m）<input id="precision" type="number" min="1" max="500" step="1" value="30"></label>
-<label class="grow">历史实验<select id="history"></select></label>
-</div>
-<div class="actions"><button id="run">按当前设置运行实验</button><button id="recompute" class="secondary">从冻结输入复算核对</button></div>
-<p id="repro" class="muted"></p>
+  <div class="mode-tabs" id="twin-modes" role="tablist" aria-label="数字孪生应用模式">
+    <button type="button" class="mode-tab active" data-mode="counterfactual"><span>子项目三/四</span><strong>五方案反事实规划推演</strong></button>
+    <button type="button" class="mode-tab" data-mode="coverage"><span>子项目一</span><strong>三维覆盖与遮挡盲区场</strong></button>
+    <button type="button" class="mode-tab" data-mode="precision"><span>子项目二</span><strong>干扰衰减与协同精度场</strong></button>
+    <button type="button" class="mode-tab" data-mode="flight"><span>子项目五/跨平台</span><strong>无人机航路与跨站跟踪</strong></button>
+  </div>
+  <div class="settings-row">
+    <label>典型应用场景<select id="scene"><option value="urban">园区高密度建筑区</option><option value="corridor">物流主干道路</option><option value="electromagnetic">园区复杂电磁区</option></select></label>
+    <label>三维建筑与遮挡源<select id="building-source"><option value="synthetic">新区高密楼宇模型（25–105m）</option><option value="xiongan_gba">雄安真实建筑轮廓（GBA）</option><option value="beijing_osm">高层摩天楼真实轮廓（OSM）</option></select></label>
+    <label>新增预算（万）<input id="budget" type="number" min="1" max="500" step="1" value="50"></label>
+    <label>随机种子数<input id="seeds" type="number" min="4" max="64" step="1" value="20"></label>
+    <label>定位门限（m）<input id="precision" type="number" min="1" max="500" step="1" value="30"></label>
+    <label class="grow">归档实验<select id="history"></select></label>
+  </div>
+  <div class="actions">
+    <button id="run">按当前场景与建筑源运行孪生实验</button>
+    <button id="recompute" class="secondary">从冻结输入复算核对</button>
+    <span id="repro" class="muted small"></span>
+  </div>
 </section>
 
 <section class="card" id="replay">
-<h2>建筑区航段对照</h2>
-<fieldset id="segment-picker" disabled>
-<legend>选择参考航段</legend>
-<form id="segment-form" class="settings-row segment-controls">
-<label class="grow">现有部署的缺测与定位异常段<select id="segment-preset"><option>等待实验档案</option></select></label>
-<label>开始（s）<input id="segment-start" type="number" min="0" step="1" required></label>
-<label>结束（s）<input id="segment-end" type="number" min="0" step="1" required></label>
-<button type="submit" class="secondary">查看航段</button>
-</form>
-</fieldset>
-<p id="segment-status" role="status" class="muted small"></p>
-<div id="segment-result" hidden>
-<h3 id="segment-title"></h3>
-<p id="segment-diagnosis"></p>
-<div id="segment-metrics" class="table-wrap"></div>
-<p id="segment-conclusion" class="segment-conclusion"></p>
-<p class="muted small" id="segment-criterion"></p>
-<div class="actions segment-actions">
-<a id="station-segment">在地面站回放此段</a>
-<a id="assist-segment">在底部助手查看证据</a>
-</div>
-</div>
-<h3>航段回放</h3>
-<div class="settings-row">
-<label>主方案<select id="primary"></select></label>
-<label>对照方案<select id="compare"></select></label>
-<label class="grow">时刻 <span id="time-label"></span><input id="time" type="range" min="0" max="0" value="0"></label>
-<div class="play"><button id="play" class="secondary">播放</button></div>
-</div>
-<div class="replay-grid">
-<div><canvas id="map" width="760" height="620" aria-label="建筑物、站址和选定航段"></canvas><p class="muted small">点击图中航线可选择主方案中状态与原因相同的连续航段。也可在上方输入起止时刻。</p><div class="legend" id="legend"></div></div>
-<div>
-<h3>各方案状态条</h3><canvas id="strips" width="640" height="150"></canvas>
-<h3>理论误差界与模拟定位误差</h3><canvas id="errors" width="640" height="230"></canvas>
-<p class="muted small">实线：主方案 CRLB；点：主方案模拟误差中位数；灰线：对照方案 CRLB；虚线：误差门限。超出上限的值画在顶部。</p>
-<div class="table-wrap" id="sample"></div>
-</div>
-</div>
+  <div class="section-heading">
+    <h2 id="replay-heading">建筑区实景三维数字孪生沙盘与航段对照</h2>
+    <span id="mode-summary-pill" class="pill">五方案反事实推演</span>
+  </div>
+
+  <div id="mode-toolbar" class="mode-subbar" hidden>
+    <label id="altitude-slice-wrap">空域切片高度
+      <select id="field-altitude">
+        <option value="">四层立体体素（50–210 m）</option>
+        <option value="50">50 m 超低空层</option>
+        <option value="95" selected>95 m 巡航低空层</option>
+        <option value="145">145 m 中低空层</option>
+        <option value="210">210 m 中高空层</option>
+      </select>
+    </label>
+    <label id="flight-track-wrap" hidden>执飞任务航迹
+      <select id="flight-track-select"></select>
+    </label>
+    <div id="mode-kpi-strip" class="mode-kpi-strip"></div>
+  </div>
+
+  <div class="settings-row playback-bar">
+    <label>主展示方案<select id="primary"></select></label>
+    <label>对照方案<select id="compare"></select></label>
+    <label class="grow">回放时刻 <b id="time-label">0 s</b><input id="time" type="range" min="0" max="0" value="0"></label>
+    <div class="play"><button id="play" class="secondary">播放</button></div>
+  </div>
+
+  <div class="twin3d-panel">
+    <div class="twin3d-toolbar">
+      <span id="twin3d-tile-status">正在初始化 WebGL 实景三维引擎…</span>
+      <div class="twin3d-buttons">
+        <label class="check-inline"><input type="checkbox" id="twin3d-imagery" checked> 卫星正射底图</label>
+        <label class="check-inline"><input type="checkbox" id="twin3d-los" checked> 实时探测波束/遮挡</label>
+        <label class="check-inline"><input type="checkbox" id="twin3d-ellipsoid" checked> 三维 CRLB 误差椭球</label>
+        <label class="check-inline"><input type="checkbox" id="twin3d-fov" checked> 传感器三维视锥</label>
+        <label class="check-inline"><input type="checkbox" id="twin3d-labels" checked> 站址铭牌</label>
+        <button type="button" class="secondary small-btn" id="twin3d-side">低空侧视</button>
+        <button type="button" class="secondary small-btn" id="twin3d-top">正射俯视</button>
+        <button type="button" class="secondary small-btn" id="twin3d-reset">全景视角</button>
+      </div>
+    </div>
+    <div class="twin3d-stage-wrap">
+      <div id="twin3d-viewport" aria-label="Three.js 实景三维低空数字孪生视窗">
+        <canvas id="twin3d-fallback" width="1120" height="480" hidden></canvas>
+      </div>
+      <div class="twin3d-hud" id="twin3d-hud"></div>
+      <div class="twin3d-inspect" id="twin3d-inspect">左键拖拽旋转 · 右键平移 · 滚轮缩放 · 点击航迹选段或点击设备/楼宇查看属性</div>
+    </div>
+  </div>
+
+  <fieldset id="segment-picker" disabled>
+    <legend>参考航段定量归因与跨平台联动</legend>
+    <form id="segment-form" class="settings-row segment-controls">
+      <label class="grow">现有部署缺测与定位异常段<select id="segment-preset"><option>等待实验档案</option></select></label>
+      <label>开始（s）<input id="segment-start" type="number" min="0" step="1" required></label>
+      <label>结束（s）<input id="segment-end" type="number" min="0" step="1" required></label>
+      <button type="submit" class="secondary">查看航段</button>
+    </form>
+  </fieldset>
+  <p id="segment-status" role="status" class="muted small"></p>
+  <div id="segment-result" hidden>
+    <h3 id="segment-title"></h3>
+    <p id="segment-diagnosis"></p>
+    <div id="segment-metrics" class="table-wrap"></div>
+    <p id="segment-conclusion" class="segment-conclusion"></p>
+    <p class="muted small" id="segment-criterion"></p>
+    <div class="actions segment-actions">
+      <a id="station-segment">在地面站同步回放此段</a>
+      <a id="assist-segment">在底部智能体核查本段证据</a>
+    </div>
+  </div>
+
+  <div class="replay-grid">
+    <div><h3>二维平面投影与快速点选</h3><canvas id="map" width="760" height="580" aria-label="建筑物、站址和选定航段"></canvas><p class="muted small">点击二维航线或三维航迹管道均可直接框选连续同因航段。</p><div class="legend" id="legend"></div></div>
+    <div>
+      <h3>五方案全航程状态条</h3><canvas id="strips" width="640" height="175"></canvas>
+      <h3>理论误差界（CRLB）与蒙特卡洛模拟误差</h3><canvas id="errors" width="640" height="230"></canvas>
+      <p class="muted small">实线：主方案 CRLB；圆点：主方案模拟误差中位数；灰线：对照方案 CRLB；红虚线：定位误差门限。</p>
+      <div class="table-wrap" id="sample"></div>
+    </div>
+  </div>
 </section>
 
 <section class="card">
-<h2>各方案异常航段</h2>
+<h2>各方案异常航段清单</h2>
 <label class="inline">方案<select id="segment-deployment"></select></label>
 <div class="table-wrap" id="segments"></div>
 </section>
 
 <section class="card">
-<h2>五个子项目的关系与必要性</h2>
-<p class="muted">箭头表示上游结果是下游的输入。每张卡片的“必要性”来自本次实验的反事实对比：去掉该项研究考虑的因素后，把方案放回完整参考环境重新评价。</p>
+<h2>五个子项目的输入输出关系与数字孪生必要性</h2>
+<p class="muted">箭头表示上游结果是下游的输入。每张卡片的“必要性”来自同一数字孪生底座上的反事实对比：去掉该项研究考虑的因素后，把方案放回完整参考环境重新评价。</p>
 <div id="chain" class="chain"></div>
 <ul id="relations" class="relations"></ul>
 <div id="point-detail" class="point-detail"></div>
 </section>
 
 <section class="card">
-<h2>部署方案对比</h2>
-<p class="muted">理论指标来自探测概率与 CRLB；模拟指标来自成对蒙特卡洛定位（同一种子、同一设备的随机抽样在各方案中相同）。</p>
+<h2>五类部署方案全指标对比</h2>
+<p class="muted">理论指标来自探测概率与加权 Fisher 信息矩阵（CRLB）；模拟指标来自成对蒙特卡洛定位。</p>
 <div class="table-wrap" id="deployments"></div>
 </section>
 
 <section class="card">
-<h2>适用边界</h2>
+<h2>适用边界与科学诚信声明</h2>
 <ul id="limitations"></ul>
 </section>
 </main>
@@ -101,7 +162,7 @@
 <div id="conversation" class="conversation"></div>
 <div class="chips" id="chips"></div>
 <form id="ask">
-<textarea id="question" rows="3" placeholder="例如：子项目二的必要性在本实验里得到支持了吗？" maxlength="3000"></textarea>
+<textarea id="question" rows="3" placeholder="例如：子项目二与子项目三的必要性在本实验里得到支持了吗？" maxlength="3000"></textarea>
 <div class="ask-row">
 <label class="check"><input type="checkbox" id="review"> 同模型复核</label>
 <button type="submit" id="send" disabled>开始</button>
@@ -110,10 +171,11 @@
 </form>
 <details id="assistant-history"><summary>本浏览器的历史提问（含其他航段）</summary><div id="runs"></div></details>
 <details><summary>设置与模型状态</summary><div id="model-status" class="small"></div>
-<p class="muted small">助手只能调用只读工具（场景快照、覆盖诊断、规划记录、验算结果、孪生实验、考核指标），不能修改配置、批准任务或控制设备。建议仅以文字给出，不会自动执行。</p></details>
+<p class="muted small">助手只能调用只读工具（研究体系总览、场景快照、覆盖诊断、规划记录、验算结果、孪生实验、考核指标），不能修改配置、批准任务或控制设备。</p></details>
 </aside>
 </div>
-<script src="static/twin-segment.js"></script>
-<script src="static/twin.js"></script>
+<script type="module" src="static/twin-engine3d.js?v=20261124d"></script>
+<script src="static/twin-segment.js?v=20261124d"></script>
+<script src="static/twin.js?v=20261124d"></script>
 </body>
 </html>

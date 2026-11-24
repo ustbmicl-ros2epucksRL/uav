@@ -7,7 +7,7 @@ from typing import Literal
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
-from . import analysis, flight_tools, proposal_kpi, proposal_source, store, twin_segment
+from . import analysis, flight_tools, proposal_kpi, proposal_source, research_overview, store, twin_segment
 from .twin_segment import SegmentRef
 from .scenes import seed
 
@@ -21,6 +21,7 @@ class ToolContext(BaseModel):
 
 
 DESCRIPTIONS = {
+    'research_framework': '读取本项目研究问题、五子项目输入输出关系、重要性、数字孪生反事实必要性、四维可行性及多平台协同边界。',
     'scene_snapshot': '读取所选场景的设备、候选站址数量及配置版本；配置不等于设备实时在线状态。',
     'diagnose_coverage': '对冻结场景执行现有 50 m 网格覆盖基线，返回覆盖率和薄弱区域；不证明 10 m/2 m 指标达标。',
     'planning_records': '读取所选场景最近 20 个规划任务摘要；没有记录时明确返回空列表。',
@@ -33,9 +34,9 @@ DESCRIPTIONS = {
     'flight_records': '在研项目：读取最近的 SITL 飞行档案摘要（时长、采样数、关联业务任务）。',
     'service_tasks': '在研项目：读取低空服务管理平台的任务统计与最近任务（状态、校验结果、执行来源）。',
 }
-ToolName = Literal['scene_snapshot', 'diagnose_coverage', 'planning_records', 'assessment_results',
-                   'twin_experiment', 'proposal_kpi', 'proposal_search', 'flight_algorithm_runs',
-                   'flight_compute', 'flight_records', 'service_tasks']
+ToolName = Literal['research_framework', 'scene_snapshot', 'diagnose_coverage', 'planning_records',
+                   'assessment_results', 'twin_experiment', 'proposal_kpi', 'proposal_search',
+                   'flight_algorithm_runs', 'flight_compute', 'flight_records', 'service_tasks']
 
 
 def digest(value):
@@ -43,8 +44,25 @@ def digest(value):
                                      allow_nan=False, separators=(',', ':')).encode()).hexdigest()
 
 
+CATEGORIES = {
+    'research_framework': 'theory',
+    'proposal_kpi': 'theory',
+    'proposal_search': 'theory',
+    'diagnose_coverage': 'platform_planning',
+    'twin_experiment': 'platform_planning',
+    'assessment_results': 'platform_planning',
+    'scene_snapshot': 'platform_planning',
+    'planning_records': 'platform_planning',
+    'flight_algorithm_runs': 'platform_collab',
+    'flight_compute': 'platform_collab',
+    'flight_records': 'platform_collab',
+    'service_tasks': 'platform_collab',
+}
+
+
 def catalog():
-    return [dict(name=name, description=description, input_schema=ToolContext.model_json_schema(),
+    return [dict(name=name, category=CATEGORIES[name], description=description,
+                 input_schema=ToolContext.model_json_schema(),
                  effects='read_only', method='POST', path='/api/research-agent/tools/' + name)
             for name, description in DESCRIPTIONS.items()]
 
@@ -124,7 +142,12 @@ def execute(name, frozen):
         raise HTTPException(422, '工具不在只读白名单中')
     scene = copy.deepcopy(frozen['scene'])
     limitations = ['仅供规划研究与人工决策，不是飞行许可或现场验收。']
-    if name == 'scene_snapshot':
+    if name == 'research_framework':
+        data = research_overview.framework_from_snapshot(frozen)
+        provenance = 'research_framework_summary'
+        source = '/api/research-overview'
+        limitations.extend(data.pop('boundaries', []))
+    elif name == 'scene_snapshot':
         data = dict(scene=scene['id'], name=scene['name'], revision=scene['revision'],
                     input_source=scene.get('input_source', '合成演示配置'),
                     devices=[{key: device[key] for key in ('id', 'name', 'type', 'status', 'x', 'y', 'z')}

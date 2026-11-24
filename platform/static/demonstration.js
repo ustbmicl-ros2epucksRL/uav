@@ -1,8 +1,9 @@
 'use strict';
 const root=location.pathname.startsWith('/network')?'/network':'', $=id=>document.getElementById(id);
+if(typeof window!=='undefined'&&window.parent&&window.parent!==window&&(window.frameElement?.dataset?.frame==='planning'||new URLSearchParams(location.search||'').get('workbench')==='1'))document.body?.classList?.add?.('workbench-embedded');
 const esc=x=>String(x??'').replace(/申请书|申报书/g,'任务').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const sceneKey=location.pathname.split('/').filter(Boolean).pop();
-const titles={tasks:'规划任务',resources:'资源配置',diagnosis:'感知诊断',planning:'网络规划',plans:'方案管理',acceptance:'任务验证',demonstration:'示范应用','data-cabinet':'数据安全柜',research:'研究问题',agents:'研究智能体'};
+const titles={overview:'研究总览',tasks:'规划任务',resources:'资源配置',diagnosis:'感知诊断',planning:'网络规划',plans:'方案管理',acceptance:'任务验证',twin:'数字孪生',demonstration:'示范应用','data-cabinet':'数据安全柜',research:'研究问题',agents:'研究智能体'};
 const names={sample_detection_rate:'样本检出比例',position_rmse_m:'定位 RMSE / m',speed_rmse_mps:'测速 RMSE / m/s',longest_continuous_s:'最长连续段 / s',track_breaks:'航迹中断次数',recognition_accuracy:'分类准确率'};
 let selected=null,current=null,allPlans=[],runList=[],viewer=null,timer=null,busy=false;
 const fmt=v=>v==null?'暂无数据':Number.isInteger(v)?String(v):Number(v).toFixed(3),pct=v=>v==null?'暂无数据':(v*100).toFixed(1)+'%';

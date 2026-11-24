@@ -1,8 +1,9 @@
-"""建筑区数字孪生必要性实验。
+"""三类典型场景数字孪生必要性实验。
 
 同一条参考轨迹、同一参考环境（建筑遮挡 + 同频/通信/天气损耗）下比较现有部署、方法方案，
-以及规划时忽略遮挡、忽略干扰得到的方案。所有方案都放回参考环境评价，并用同一组随机种子
-成对生成探测与量测噪声。参考轨迹只作评价真值，不输入定位或跟踪。合成证据，非外场结果。
+以及规划时忽略遮挡、忽略干扰、仅按覆盖规划（忽略协同定位精度）得到的反事实方案。
+所有方案都放回参考环境评价，并用同一组随机种子成对生成探测与量测噪声。
+参考轨迹只作评价真值，不输入定位或跟踪。合成证据，非外场结果。
 """
 import copy
 import hashlib
@@ -18,28 +19,53 @@ from . import coverage_core as core
 from .proposal_kpi import VERSION as KPI_VERSION
 from .scenes import CATALOG, trajectories
 
-EXPERIMENT_VERSION = 'twin-necessity-v1'
+EXPERIMENT_VERSION = 'twin-necessity-v2'
 TRACK_ID = 'UAV-002'
 PLANNING_SPACE = dict(x=[125, 800, 50], y=[175, 1700, 50], z=[45, 75])
+SCENE_PROFILES = {
+    'urban': dict(
+        short='建筑区',
+        track_id='UAV-002',
+        track_label='建筑区低空巡航（以 30–100 m 为主，遇建筑爬升越过）',
+        planning_space=PLANNING_SPACE,
+        environment=dict(),
+    ),
+    'corridor': dict(
+        short='物流廊道',
+        track_id='UAV-001',
+        track_label='物流主干道低空穿越（沿东西向廊道 50–95 m 连续跨站飞行）',
+        planning_space=dict(x=[150, 1850, 100], y=[650, 1200, 50], z=[50, 80]),
+        environment=dict(cochannel_db=4.5, communication_db=2.5, weather_db=1.0),
+    ),
+    'electromagnetic': dict(
+        short='复杂电磁区',
+        track_id='UAV-003',
+        track_label='复杂电磁区机动巡检（在共址基站密集区做变高盘旋飞行）',
+        planning_space=dict(x=[1050, 1800, 50], y=[850, 1600, 50], z=[45, 80]),
+        environment=dict(cochannel_db=7.5, communication_db=4.5, weather_db=1.5),
+    ),
+}
 OPTION_AZIMUTHS = {'RADAR': [0, 90, 180, 270], 'EO': [45, 135, 225, 315], 'RF': [0]}
 DEPLOYMENTS = [
     ('baseline', '现有部署', None, '保留场景中已有设备，不新增。'),
     ('method', '方法方案', 'full', '规划模型包含建筑遮挡、干扰损耗与多站协同定位。'),
     ('ignore_occlusion', '反事实：规划时忽略遮挡', 'no_occlusion', '规划模型去掉建筑遮挡，其余相同。'),
     ('ignore_interference', '反事实：规划时忽略干扰', 'no_interference', '规划模型去掉同频与通信干扰损耗，其余相同。'),
+    ('coverage_only', '反事实：仅按覆盖规划', 'coverage_only', '同预算下仅按探测覆盖增益选址，忽略多站可观测与定位精度约束。'),
 ]
 LIMITATIONS = [
     '合成场景、示例设备参数与模拟参考轨迹，不是外场测量。',
     '定位误差由线性化高斯量测与随机漏检模拟，不含共同偏差、多径和虚警。',
     '理论精度界（CRLB）按探测概率加权的信息矩阵计算，不等于实际定位误差。',
     '规划在任务空域采样点上进行，参考轨迹只用于评价；两种贪心加局部搜索不保证全局最优。',
-    '只覆盖建筑区一个场景；强电磁、线性廊道、复杂水域与实地飞行需另行验证。',
+    '覆盖建筑区、物流主干道、复杂电磁区三类合成场景；复杂水域与实地飞行需另行验证。',
 ]
 
 
 class TwinRequest(BaseModel):
     model_config = ConfigDict(extra='forbid', allow_inf_nan=False)
-    scene: Literal['urban'] = 'urban'
+    scene: Literal['urban', 'corridor', 'electromagnetic'] = 'urban'
+    building_source: Literal['synthetic', 'xiongan_gba', 'beijing_osm'] = 'synthetic'
     budget: float = Field(default=50, gt=0, le=500)
     seed_count: int = Field(default=20, ge=4, le=64)
     precision_m: float = Field(default=30, gt=0, le=500)
@@ -57,6 +83,11 @@ def r6(value):
     return round(value, 6) if np.isfinite(value) else None
 
 
+def scene_profile(scene):
+    scene_id = scene['id'] if isinstance(scene, dict) else scene
+    return SCENE_PROFILES.get(scene_id, SCENE_PROFILES['urban'])
+
+
 def options(scene):
     """Candidate site × device type × azimuth. One option per site at most."""
     result = []
@@ -71,21 +102,29 @@ def options(scene):
 
 
 def reference_track(scene):
-    """Low-altitude cruise on the UAV-002 ground path; climbs 10 m above any building it crosses."""
-    base = next(t for t in trajectories(scene)['tracks'] if t['id'] == TRACK_ID)
+    """Low-altitude cruise on the scene's representative ground path; climbs 10 m above any building it crosses."""
+    profile = scene_profile(scene)
+    base = next(t for t in trajectories(scene)['tracks'] if t['id'] == profile['track_id'])
+    scene_id = scene.get('id', 'urban')
     points = []
     for t, (x, y, _) in enumerate(base['points']):
-        z = 60 + 15 * math.sin(t / 18)
+        if scene_id == 'corridor':
+            z = 65 + 15 * math.sin(t / 16)
+        elif scene_id == 'electromagnetic':
+            z = 58 + 18 * math.sin(t / 15)
+        else:
+            z = 60 + 15 * math.sin(t / 18)
         for b in scene['buildings']:
             if b['x'] <= x <= b['x'] + b['w'] and b['y'] <= y <= b['y'] + b['d']:
                 z = max(z, b['h'] + 10)
         points.append([x, y, round(z, 1)])
-    return dict(id=base['id'] + '-LOW', label='建筑区低空巡航（以 30–100 m 为主，遇建筑爬升越过）', points=points)
+    return dict(id=base['id'] + '-LOW', label=profile['track_label'], points=points)
 
 
 def frozen_inputs(scene, request):
+    profile = scene_profile(scene)
     track = reference_track(scene)
-    volume = core.Volume(precision_m=request.precision_m)
+    volume = core.Volume(precision_m=request.precision_m, **profile['environment'])
     return dict(experiment_version=EXPERIMENT_VERSION, model_version=core.MODEL_VERSION, kpi_version=KPI_VERSION,
                 scene=copy.deepcopy(scene), scene_revision=scene['revision'],
                 trajectory=dict(id=track['id'], label=track['label'], dt_s=1.0,
@@ -93,13 +132,13 @@ def frozen_inputs(scene, request):
                                 role='合成参考真值，仅用于评价，不输入定位或跟踪'),
                 environment=volume.model_dump(), budget=request.budget,
                 seeds=[20261120 + i for i in range(request.seed_count)],
-                options=options(scene), planning_space=PLANNING_SPACE)
+                options=options(scene), planning_space=copy.deepcopy(profile['planning_space']))
 
 
 def planning_points(space):
     x0, x1, step = space['x']
-    y0, y1, _ = space['y']
-    axes = [np.arange(x0, x1, step), np.arange(y0, y1, step), np.array(space['z'], float)]
+    y0, y1, y_step = space['y']
+    axes = [np.arange(x0, x1, step), np.arange(y0, y1, y_step), np.array(space['z'], float)]
     return np.stack(np.meshgrid(*axes, indexing='ij'), -1).reshape(-1, 3).astype(float)
 
 
@@ -118,8 +157,9 @@ def adequate(f, volume):
 class PlannerModel:
     """Same fusion as coverage_core.fields, with each option's contribution computed once."""
 
-    def __init__(self, scene, volume, choices, points):
+    def __init__(self, scene, volume, choices, points, coverage_only=False):
         self.volume = volume
+        self.coverage_only = coverage_only
         self.base = core.fields(scene, points, volume)
         self.parts = {}
         for option in choices:
@@ -130,7 +170,11 @@ class PlannerModel:
         miss, fim = 1 - self.base['pd'], self.base['fim'].copy()
         for identifier in ids:
             pd, information = self.parts[identifier]
-            miss, fim = miss * (1 - pd), fim + information
+            miss = miss * (1 - pd)
+            if not self.coverage_only:
+                fim = fim + information
+        if self.coverage_only:
+            return int(((1 - miss >= self.volume.pd_threshold) & self.base['valid']).sum())
         eig = np.linalg.eigvalsh(fim)
         observable = (eig[:, 0] > 1e-8) & self.base['valid']
         precision = np.full(len(miss), np.inf)
@@ -141,7 +185,7 @@ class PlannerModel:
 def plan(scene, volume, kind, choices, budget, points):
     """单位费用增益与绝对增益两种贪心各做局部搜索（删 1 加 1–2）和冗余删除，取规划模型得分高者；每站址至多一台。"""
     model_scene, model_volume = planner_model(scene, volume, kind)
-    model = PlannerModel(model_scene, model_volume, choices, points)
+    model = PlannerModel(model_scene, model_volume, choices, points, coverage_only=(kind == 'coverage_only'))
     by_id = {option['id']: option for option in choices}
     cost = lambda ids: sum(by_id[i]['cost'] for i in ids)
     runs = [search(model, choices, budget, by_id, cost, per_cost) for per_cost in (True, False)]
@@ -329,8 +373,10 @@ def contrast(name, method, other):
 
 def search_note(rows):
     row = next(r for r in rows if r['key'] == 'method')
+    cov_row = next((r for r in rows if r['key'] == 'coverage_only'), None)
     compare = next((h for h in row['planning_history'] if h.get('step') == 'compare'), None)
-    text = '不规划时保持现有部署的缺测；只按理想模型规划则如子项目一、二的反事实所示。'
+    lead = contrast('仅按覆盖规划（忽略协同定位精度）', row['metrics'], cov_row['metrics']) if cov_row else ''
+    text = f'{lead}不规划时保持现有部署的缺测；只按理想模型规划则如子项目一、二的反事实所示。'.strip()
     if not compare:
         return text
     parts = '；'.join(f'{c["rule"]}得 {c["planner_score"]} 个合格采样点、费用 {c["cost"]:g} 万元' for c in compare['candidates'])
@@ -343,13 +389,16 @@ def research_points(rows, inputs):
     by = {row['key']: row['metrics'] for row in rows}
     base, method = by['baseline'], by['method']
     occlusion, interference = by['ignore_occlusion'], by['ignore_interference']
+    coverage_only = by.get('coverage_only')
     blocked = base['unavailable_seconds_by_cause'].get('建筑遮挡', 0)
+    interfered = base['unavailable_seconds_by_cause'].get('干扰衰减', 0)
     single, multi = method['single_station_pass'], method['multi_station_pass']
+    scene_name = inputs['scene'].get('name') or scene_profile(inputs['scene'])['short']
     common = dict(evidence_level='合成孪生', evidence_note='合成场景与模拟参考轨迹；不能写成外场精度或现场验收')
     return [
         dict(id=1, subproject='子项目一', title='三维感知覆盖建模',
              question='建筑遮挡造成的漏看出现在航迹的哪一段？',
-             finding=f'现有部署在这条航迹上因建筑遮挡不可用 {blocked:g} s，轨迹覆盖 {pct(base["track_coverage"])}。',
+             finding=f'现有部署在这条航迹上因建筑遮挡不可用 {blocked:g} s（干扰衰减 {interfered:g} s），轨迹覆盖 {pct(base["track_coverage"])}。',
              necessity=contrast('规划时忽略遮挡', method, occlusion),
              feeds=[2, 3], evidence=dict(baseline_blocked_s=blocked, ignore_occlusion=occlusion, method=method),
              pending=['用测绘建筑与单设备标定数据复核遮挡和视场', '网格收敛与独立空间采样对照'], **common),
@@ -363,26 +412,26 @@ def research_points(rows, inputs):
                                                      ignore_interference=interference, method=method),
              pending=['实测标定干扰传播与误差相关性', '加入共同偏差与真实估计器后的误差对照'], **common),
         dict(id=3, subproject='子项目三', title='按需规划与多目标优化',
-             question='同样的预算下，补站之后缺测缩短多少、费用增加多少？',
+             question='同样的预算下，协同精度约束规划相比仅按覆盖选址与现有部署改善多少？',
              finding=(f'新增 {method["added_devices"]} 台、费用 {method["added_cost"]:g} 万元（预算 {inputs["budget"]:g} 万元）；'
                       f'理论合格 {pct(base["theoretical_pass"])} → {pct(method["theoretical_pass"])}，'
                       f'最长连续不可用 {base["longest_gap_theoretical_s"]:g} s → {method["longest_gap_theoretical_s"]:g} s，'
                       f'模拟定位合格 {pct(base["simulated_pass"])} → {pct(method["simulated_pass"])}。'),
              necessity=search_note(rows),
-             depends_on=[1, 2], feeds=[4], evidence=dict(baseline=base, method=method),
+             depends_on=[1, 2], feeds=[4], evidence=dict(baseline=base, coverage_only=coverage_only, method=method),
              pending=['与小规模穷举或整数规划比较最优差距', '核验站址挂高、供电、回传与报价'], **common),
         dict(id=4, subproject='子项目四', title='规划平台与可复算档案',
              question='任务、场景、部署、轨迹和模型能否冻结并复算出同一结果？',
-             finding=f'本实验冻结场景版本 {inputs["scene_revision"]}、覆盖模型 {inputs["model_version"]}、指标版本 {inputs["kpi_version"]} 与 {len(inputs["seeds"])} 个随机种子。',
+             finding=f'本实验冻结场景「{scene_name}」（版本 {inputs["scene_revision"]}）、覆盖模型 {inputs["model_version"]}、指标版本 {inputs["kpi_version"]} 与 {len(inputs["seeds"])} 个随机种子。',
              necessity='没有冻结输入，覆盖、精度和方案的前后数字无法对上，也无法复核。',
              depends_on=[3], feeds=[5], evidence=dict(seeds=len(inputs['seeds']), model_version=inputs['model_version']),
              pending=['真实设备协议接入与时间同步', '运行反馈驱动的滚动优化'], **common),
         dict(id=5, subproject='子项目五', title='典型场景示范',
-             question='这条闭环能否换成实测轨迹与现场观测再跑一次？',
-             finding='建筑区合成闭环已可复现，只作为示范准备证据。',
-             necessity='只有接入现场观测与独立真值，才能把合成结论换成外场证据。',
-             depends_on=[4], evidence=dict(scenes_ready=['建筑区（合成）']),
-             pending=['强电磁、线性廊道、复杂水域场景映射', '实地组网、无人机对抗与独立参考真值'], **common),
+             question='这条闭环能否在三类场景中换成实测轨迹与现场观测再跑一次？',
+             finding=f'当前「{scene_name}」合成孪生闭环已可复现，三类典型场景（建筑区、物流主干道、复杂电磁区）均支持同框架反事实对照，作为现场示范准备证据。',
+             necessity='只有接入现场观测与独立真值，才能把合成结论换成外场证据，支撑“典型场景组网验证—重点片区集约规划—新区场景拓展应用”落地。',
+             depends_on=[4], evidence=dict(scenes_ready=['园区高密度建筑区（合成）', '物流主干道路（合成）', '园区复杂电磁区（合成）']),
+             pending=['复杂水域场景拓展映射', '实地组网、合作/非合作无人机实飞与独立参考真值'], **common),
     ]
 
 
@@ -414,7 +463,10 @@ def run(scene, request):
 
 def summary(record):
     result = record['result']
-    return dict(id=record['id'], created_at=record['created_at'], scene=record['inputs']['scene']['id'],
+    scene_obj = record['inputs']['scene']
+    return dict(id=record['id'], created_at=record['created_at'], scene=scene_obj['id'],
+                scene_name=scene_obj.get('name', scene_obj['id']),
+                building_source=scene_obj.get('building_source', 'synthetic'),
                 scene_revision=record['inputs']['scene_revision'], experiment_version=record['inputs']['experiment_version'],
                 kpi_version=record['inputs']['kpi_version'], model_version=record['inputs']['model_version'],
                 budget=record['inputs']['budget'], seeds=len(record['inputs']['seeds']),

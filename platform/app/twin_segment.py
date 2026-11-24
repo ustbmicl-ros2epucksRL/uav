@@ -5,6 +5,8 @@ from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 from .twin_experiment import longest_run
 
+SCENE_SHORT = {'urban': '建筑区', 'corridor': '物流廊道', 'electromagnetic': '复杂电磁区'}
+
 
 class SegmentRef(BaseModel):
     model_config = ConfigDict(extra='forbid')
@@ -36,8 +38,9 @@ def deployment_slice(row, start, end, dt):
 
 def analyze(record, start, end):
     inputs = record['inputs']
-    if record.get('evidence_level') != 'synthetic_twin' or inputs['scene']['id'] != 'urban':
-        raise HTTPException(422, '仅支持已归档的建筑区合成实验')
+    scene_id = inputs['scene']['id']
+    if record.get('evidence_level') != 'synthetic_twin' or scene_id not in SCENE_SHORT:
+        raise HTTPException(422, '仅支持已归档的合成数字孪生实验')
     trajectory = inputs['trajectory']
     times = trajectory['times']
     if not 0 <= start <= end < len(times):
@@ -49,7 +52,9 @@ def analyze(record, start, end):
                         gap_reduction_s=row['longest_gap_s'] - method['longest_gap_s'],
                         equal_cost=abs(method['added_cost'] - row['added_cost']) < 1e-8)
                    for row in rows if row['key'] != 'method']
-    return dict(experiment_id=record['id'], start=start, end=end, sample_count=end - start + 1,
+    return dict(experiment_id=record['id'], scene=scene_id,
+                scene_name=inputs['scene'].get('name', SCENE_SHORT[scene_id]),
+                start=start, end=end, sample_count=end - start + 1,
                 start_s=times[start], end_s=times[end], dt_s=trajectory['dt_s'],
                 budget=inputs['budget'], cost_unit='万元', precision_m=inputs['environment']['precision_m'],
                 deployments=rows, comparisons=comparisons, input_digest=record['input_digest'],
@@ -62,7 +67,8 @@ def report_facts(segment):
     rows = {row['key']: row for row in segment['deployments']}
     baseline, method = rows['baseline'], rows['method']
     n = segment['sample_count']
-    conclusion = (f"建筑区合成航段 {segment['start_s']:g}–{segment['end_s']:g} 秒，"
+    scene_label = SCENE_SHORT.get(segment.get('scene', 'urban'), '合成场景')
+    conclusion = (f"{scene_label}合成航段 {segment['start_s']:g}–{segment['end_s']:g} 秒，"
                   f"现有部署有 {baseline['blind_count']} 个探测盲点。"
                   f"按 {segment['precision_m']:g} 米理论定位门槛，现有部署合格 {baseline['pass_count']}/{n} 点，"
                   f"完整规划合格 {method['pass_count']}/{n} 点。")

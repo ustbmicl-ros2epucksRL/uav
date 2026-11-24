@@ -1,24 +1,66 @@
 const root = location.pathname.startsWith('/network') ? '/network' : '';
 const $ = id => document.getElementById(id);
-const workbench = window.parent !== window && (window.frameElement?.dataset.frame === 'planning' ||
-    new URLSearchParams(location.search).get('workbench') === '1');
-if (workbench) document.body.classList.add('workbench-embedded');
+const workbench = typeof window !== 'undefined' && window.parent && window.parent !== window &&
+    (window.frameElement?.dataset?.frame === 'planning' || new URLSearchParams(location.search || '').get('workbench') === '1');
+if (workbench) document.body?.classList?.add?.('workbench-embedded');
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 const pct = v => v == null ? '—' : (v * 100).toFixed(1) + '%';
 const meters = v => v == null ? '—' : v.toFixed(1) + ' m';
+const SCENE_LABELS = {urban: '建筑区', corridor: '物流主干道', electromagnetic: '复杂电磁区'};
+const BSRC_LABELS = {synthetic: '新区高密楼宇模型', xiongan_gba: '雄安真实建筑轮廓', beijing_osm: '高层真实轮廓(OSM)'};
+const MODE_LABELS = {
+    counterfactual: '五方案反事实规划推演',
+    coverage: '三维覆盖与遮挡盲区场',
+    precision: '干扰衰减与协同精度场',
+    flight: '无人机航路与跨站跟踪孪生',
+};
 const STATE = {
     ok: ['#2a9d6f', '可定位且理论误差合格'], imprecise: ['#e0a030', '理论误差超限'],
     unlocatable: ['#d9792b', '单站，无法定位'], blind: ['#c0392b', '漏看（遮挡/干扰/超视场）'], invalid: ['#7f8c8d', '轨迹点在建筑内'],
 };
-const TYPE_COLOR = {RADAR: '#5dade2', EO: '#f5b041', RF: '#af7ac5', IR: '#ec7063'};
-const POINT_VIEW = {1: ['ignore_occlusion', 'method'], 2: ['ignore_interference', 'method'], 3: ['method', 'baseline'], 4: ['method', 'baseline'], 5: ['method', 'baseline']};
+const TYPE_COLOR = {RADAR: '#5dade2', EO: '#f5b041', RF: '#af7ac5', IR: '#ec7063', ADSB: '#48c9b0'};
+const POINT_VIEW = {
+    1: ['ignore_occlusion', 'method'],
+    2: ['ignore_interference', 'method'],
+    3: ['coverage_only', 'method'],
+    4: ['method', 'baseline'],
+    5: ['method', 'baseline'],
+};
 let record = null, selectedPoint = 1, timer = null, run = null, poll = null;
-let segmentRange = null, recordRevision = 0, segmentRevision = 0;
+let segmentRange = null, recordRevision = 0, segmentRevision = 0, spaceRevision = 0;
+let currentMode = 'counterfactual';
+let spaceData = null, flightTracks = [], activeFlightIndex = 0;
+let engine3d = null;
+
 const session = localStorage.getItem('twin-session') || (() => {
     const id = Array.from(crypto.getRandomValues(new Uint8Array(8)), b => b.toString(16).padStart(2, '0')).join('');
     localStorage.setItem('twin-session', id);
     return id;
 })();
+
+function mountEngineIfReady() {
+    if (engine3d || typeof window === 'undefined' || !window.TwinEngine3D || !$('twin3d-viewport')) return;
+    try {
+        engine3d = window.TwinEngine3D.mount($('twin3d-viewport'));
+        engine3d.onTileStatus = text => { if ($('twin3d-tile-status')) $('twin3d-tile-status').textContent = text; };
+        engine3d.onInspect = text => { if ($('twin3d-inspect')) $('twin3d-inspect').textContent = text; };
+        engine3d.onPickSample = index => {
+            if (currentMode === 'flight') {
+                $('time').value = index;
+                draw();
+            } else {
+                selectContinuousSegmentAt(index);
+            }
+        };
+        if (record) draw();
+    } catch (error) {
+        if ($('twin3d-tile-status')) $('twin3d-tile-status').textContent = '三维引擎降级为平面模式：' + error.message;
+    }
+}
+if (typeof window !== 'undefined') {
+    window.addEventListener?.('twin-engine3d-ready', mountEngineIfReady);
+    mountEngineIfReady();
+}
 
 async function api(path, options = {}) {
     const response = await fetch(root + path, {headers: {'Content-Type': 'application/json'}, ...options});
@@ -32,17 +74,113 @@ function status(text, error = false) {
     $('status').className = error ? 'error' : '';
 }
 
-const deployment = key => record.result.deployments.find(row => row.key === key);
+const deployment = key => record.result.deployments.find(row => row.key === key) || record.result.deployments[0];
 const table = (head, rows, classes = []) => `<table><thead><tr>${head.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map((row, i) => `<tr class="${classes[i] || ''}">${row.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
 
-$('navigation').innerHTML = Object.entries({tasks: '规划任务', resources: '资源配置', diagnosis: '感知诊断', planning: '网络规划', plans: '方案管理', acceptance: '任务验证', twin: '研究必要性孪生', research: '研究问题', demonstration: '示范应用'})
-    .map(([path, label]) => `<a href="${root}/${path}" class="${path === 'twin' ? 'active' : ''}">${label}</a>`).join('');
+$('navigation').innerHTML = Object.entries({
+    overview: '研究总览', twin: '三维数字孪生', tasks: '规划任务', resources: '资源配置',
+    diagnosis: '感知诊断', planning: '网络规划', plans: '方案管理', acceptance: '任务验证',
+    research: '研究问题', demonstration: '示范应用',
+}).map(([path, label]) => `<a href="${root}/${path}" class="${path === 'twin' ? 'active' : ''}">${label}</a>`).join('');
 
 async function loadHistory(selected) {
     const {experiments} = await api('/api/twin-experiments');
-    $('history').innerHTML = experiments.map(row => `<option value="${row.id}">${escapeHtml(row.created_at)} · 预算 ${row.budget} 万元 · ${row.seeds} 种子 · ${row.id.slice(0, 8)}</option>`).join('');
+    $('history').innerHTML = experiments.map(row => {
+        const label = SCENE_LABELS[row.scene] || row.scene || '建筑区';
+        const bsrc = row.building_source && row.building_source !== 'synthetic' ? ` · ${BSRC_LABELS[row.building_source] || row.building_source}` : '';
+        return `<option value="${row.id}">${escapeHtml(label)}${escapeHtml(bsrc)} · ${escapeHtml(row.created_at)} · 预算 ${row.budget} 万 · ${row.id.slice(0, 8)}</option>`;
+    }).join('');
     if (selected) $('history').value = selected;
     return experiments;
+}
+
+async function refreshSpaceLayer() {
+    if (!record) return;
+    const rev = ++spaceRevision;
+    const inputs = record.inputs;
+    const sceneId = inputs.scene.id || 'urban';
+    const bsrc = inputs.scene.building_source || $('building-source')?.value || 'synthetic';
+    const altVal = $('field-altitude')?.value;
+    try {
+        const res = await api('/api/twin-space', {
+            method: 'POST',
+            body: JSON.stringify({
+                mode: currentMode,
+                scene: sceneId,
+                building_source: bsrc,
+                experiment_id: record.id,
+                deployment: $('primary')?.value || 'baseline',
+                altitude_m: (currentMode === 'coverage' || currentMode === 'precision') && altVal ? Number(altVal) : null,
+                cell_m: altVal ? 65 : 100,
+                precision_m: inputs.environment.precision_m,
+            }),
+        });
+        if (rev !== spaceRevision) return;
+        spaceData = res;
+        if (currentMode === 'coverage' || currentMode === 'precision') {
+            engine3d?.setVoxels(res.voxels, currentMode, res.cell_m, res.pd_threshold, res.precision_m);
+            const s = res.stats || {};
+            if ($('mode-kpi-strip')) {
+                $('mode-kpi-strip').innerHTML = [
+                    `有效空域体素 <b>${(s.valid_cells || 0).toLocaleString()}</b>`,
+                    `全域覆盖 <b>${pct(s.coverage)}</b>`,
+                    `重点区覆盖 <b>${pct(s.focus_coverage)}</b>`,
+                    `定位精度合格（≤${res.precision_m}m） <b>${pct(s.precision_pass_rate)}</b>`,
+                ].join(' · ');
+            }
+        } else {
+            engine3d?.clearVoxels();
+            if (currentMode === 'flight') {
+                flightTracks = res.tracks || [];
+                const sel = $('flight-track-select');
+                if (sel) {
+                    sel.innerHTML = flightTracks.map((tr, idx) => `<option value="${idx}">${escapeHtml(tr.label)}（${escapeHtml(tr.origin)}）</option>`).join('');
+                    activeFlightIndex = Math.min(activeFlightIndex, Math.max(0, flightTracks.length - 1));
+                    sel.value = String(activeFlightIndex);
+                }
+                syncFlightTimeline();
+            }
+        }
+        draw();
+    } catch {
+        // Keep base experiment playback working even if /api/twin-space is mocked out in unit tests
+    }
+}
+
+function syncFlightTimeline() {
+    if (currentMode !== 'flight' || !flightTracks.length) return;
+    const tr = flightTracks[activeFlightIndex] || flightTracks[0];
+    $('time').min = 0;
+    $('time').max = Math.max(0, tr.points.length - 1);
+    $('time').value = 0;
+    if ($('mode-kpi-strip')) {
+        $('mode-kpi-strip').innerHTML = [
+            `航迹来源 <b>${escapeHtml(tr.origin)}</b>`,
+            `沿线覆盖率 <b>${pct(tr.summary.coverage_rate)}</b>`,
+            `协同定位合格率 <b>${pct(tr.summary.precision_pass_rate)}</b>`,
+            `最长连续失锁 <b>${tr.summary.longest_gap_s} s</b>`,
+        ].join(' · ');
+    }
+}
+
+function setMode(mode) {
+    if (!MODE_LABELS[mode]) return;
+    currentMode = mode;
+    if ($('twin-modes')) {
+        for (const btn of $('twin-modes').querySelectorAll?.('[data-mode]') || []) {
+            btn.classList?.toggle?.('active', btn.dataset.mode === mode);
+        }
+    }
+    if ($('mode-summary-pill')) $('mode-summary-pill').textContent = MODE_LABELS[mode];
+    if ($('mode-toolbar')) $('mode-toolbar').hidden = mode === 'counterfactual';
+    if ($('altitude-slice-wrap')) $('altitude-slice-wrap').hidden = !(mode === 'coverage' || mode === 'precision');
+    if ($('flight-track-wrap')) $('flight-track-wrap').hidden = mode !== 'flight';
+    if (mode !== 'flight' && record && segmentRange) {
+        $('time').min = segmentRange.start;
+        $('time').max = segmentRange.end;
+        $('time').value = segmentRange.start;
+    }
+    refreshSpaceLayer();
 }
 
 async function open(id, range) {
@@ -52,26 +190,35 @@ async function open(id, range) {
     if (revision !== recordRevision) return;
     record = archive;
     if (!Array.from($('history').options).some(option => option.value === id)) {
-        $('history').add(new Option(`${archive.created_at} · ${id.slice(0, 8)}`, id));
+        const label = SCENE_LABELS[archive.inputs?.scene?.id] || '合成场景';
+        $('history').add(new Option(`${label} · ${archive.created_at} · ${id.slice(0, 8)}`, id));
     }
     $('history').value = id;
     render(range);
-    status(record.scene_changed ? '场景已在实验后修改；本页显示的是冻结输入下的结果，需要时请重新运行。' : '实验已加载。');
+    status(record.scene_changed ? '场景已在实验后修改；本页显示的是冻结输入下的结果，需要时请重新运行。' : '数字孪生档案已加载。');
 }
 
 async function runExperiment() {
     $('run').disabled = true;
-    status('正在计算：规划四种部署并做成对蒙特卡洛评价…');
+    const chosenScene = $('scene')?.value || 'urban';
+    const chosenBsrc = $('building-source')?.value || 'synthetic';
+    status(`正在计算「${SCENE_LABELS[chosenScene] || chosenScene} · ${BSRC_LABELS[chosenBsrc] || chosenBsrc}」：五方案规划与成对蒙特卡洛评价…`);
     const revision = ++recordRevision;
     try {
-        const body = {scene: 'urban', budget: +$('budget').value, seed_count: +$('seeds').value, precision_m: +$('precision').value};
+        const body = {
+            scene: chosenScene,
+            building_source: chosenBsrc,
+            budget: +$('budget').value,
+            seed_count: +$('seeds').value,
+            precision_m: +$('precision').value,
+        };
         const archive = await api('/api/twin-experiments', {method: 'POST', body: JSON.stringify(body)});
         if (revision !== recordRevision) return;
         record = archive;
         await loadHistory(record.id);
         if (revision !== recordRevision) return;
         render();
-        status('实验完成并已存档。');
+        status('数字孪生实验完成并已归档。');
     } catch (error) {
         status('实验未完成：' + error.message, true);
     } finally {
@@ -98,16 +245,26 @@ async function recompute() {
 
 function renderRepro() {
     const check = record.reproducibility;
-    $('repro').innerHTML = `输入摘要 <span class="mono">${record.input_digest.slice(0, 16)}</span> · 结果摘要 <span class="mono">${record.result_digest.slice(0, 16)}</span>` +
-        (check ? ` · ${escapeHtml(check.checked_at)} 复算${check.matches && check.input_matches ? '<b class="pass"> 一致</b>' : '<b class="fail"> 不一致</b>'}` : ' · 尚未复算核对');
+    $('repro').innerHTML = `输入摘要 <span class="mono">${record.input_digest.slice(0, 12)}</span> · 结果摘要 <span class="mono">${record.result_digest.slice(0, 12)}</span>` +
+        (check ? ` · 复算${check.matches && check.input_matches ? '<b class="pass"> 一致</b>' : '<b class="fail"> 不一致</b>'}` : ' · 可复算核验');
 }
 
 function render(range) {
     const inputs = record.inputs;
+    const sceneId = inputs.scene.id || 'urban';
+    const bsrc = inputs.scene.building_source || 'synthetic';
+    const shortScene = SCENE_LABELS[sceneId] || inputs.scene.name || sceneId;
+    if ($('scene')) $('scene').value = sceneId;
+    if ($('building-source')) $('building-source').value = bsrc;
+    if ($('page-title')) $('page-title').textContent = `低空多模态感知三维数字孪生中心 · ${shortScene}`;
+    if ($('replay-heading')) $('replay-heading').textContent = `${shortScene}实景三维数字孪生沙盘与航段对照`;
     $('context').innerHTML = [
-        ['系统', '感知网络规划'], ['场景', `${escapeHtml(inputs.scene.name || inputs.scene.id)}（版本 ${inputs.scene_revision}）`],
-        ['实验', record.id.slice(0, 8)], ['指标版本', inputs.kpi_version], ['覆盖模型', inputs.model_version],
-        ['参考轨迹', `${escapeHtml(inputs.trajectory.id)}，${inputs.trajectory.points.length} 个采样点`], ['证据等级', '合成孪生'],
+        ['数字孪生底座', 'Three.js + WGS84 实景瓦片'],
+        ['应用场景', `${escapeHtml(inputs.scene.name || sceneId)}（版本 ${inputs.scene_revision}）`],
+        ['三维建筑源', `${escapeHtml(BSRC_LABELS[bsrc] || bsrc)}（${inputs.scene.buildings.length} 栋参与遮挡）`],
+        ['实验档案', record.id.slice(0, 8)],
+        ['指标口径', inputs.kpi_version],
+        ['参考轨迹', `${escapeHtml(inputs.trajectory.id)}，${inputs.trajectory.points.length} 点`],
     ].map(([k, v]) => `<span>${k} <b>${v}</b></span>`).join('');
     $('assistant-context').textContent = '请选择已归档的航段。';
     $('budget').value = inputs.budget;
@@ -118,8 +275,8 @@ function render(range) {
     renderTable();
     const options = record.result.deployments.map(row => `<option value="${row.key}">${escapeHtml(row.label)}</option>`).join('');
     for (const id of ['primary', 'compare', 'segment-deployment']) $(id).innerHTML = options;
-    $('primary').value = 'baseline';
-    $('compare').value = 'method';
+    $('primary').value = 'method';
+    $('compare').value = 'baseline';
     $('segment-deployment').value = 'baseline';
     $('time').min = 0;
     $('time').max = inputs.trajectory.points.length - 1;
@@ -127,22 +284,26 @@ function render(range) {
     $('limitations').innerHTML = record.result.limitations.map(item => `<li>${escapeHtml(item)}</li>`).join('');
     $('legend').innerHTML = Object.values(STATE).map(([color, label]) => `<span><i style="background:${color}"></i>${label}</span>`).join('') +
         Object.entries(TYPE_COLOR).slice(0, 3).map(([type, color]) => `<span><i style="background:${color};border-radius:50%"></i>${type}</span>`).join('') +
-        '<span><i style="border:2px solid #fff;background:transparent;border-radius:50%"></i>新增设备</span>';
+        '<span><i style="border:2px solid #fff;background:transparent;border-radius:50%"></i>规划新增设备</span>';
     renderSegments();
     prepareSegment(range);
+    refreshSpaceLayer();
 }
 
 function verdict(point) {
-    if (point.id === 1 || point.id === 2) {
+    const keyMap = {1: 'ignore_occlusion', 2: 'ignore_interference', 3: 'coverage_only'};
+    const counterfactualKey = keyMap[point.id];
+    if (counterfactualKey) {
+        const otherRow = record.result.deployments.find(row => row.key === counterfactualKey);
+        if (!otherRow) return point.id === 3 ? '同预算覆盖规划对照' : point.evidence_level;
         const method = deployment('method').metrics;
-        const other = deployment(point.id === 1 ? 'ignore_occlusion' : 'ignore_interference').metrics;
+        const other = otherRow.metrics;
         const rateGain = method.theoretical_pass - other.theoretical_pass;
         const gapGain = other.longest_gap_theoretical_s - method.longest_gap_theoretical_s;
         if (rateGain >= 0 && gapGain >= 0 && (rateGain > 0 || gapGain > 0)) return '本航线对照显示改善';
         if (rateGain <= 0 && gapGain <= 0) return '本航线未显示改善';
         return '两项指标变化方向不同';
     }
-    if (point.id === 3) return '待补同预算人工选址对照';
     return point.evidence_level;
 }
 
@@ -160,14 +321,17 @@ function renderChain() {
         <dt>上下游</dt><dd>${p.depends_on ? '依赖子项目' + p.depends_on.join('、') : '链条起点'}；${p.feeds ? '输出给子项目' + p.feeds.join('、') : '链条终点'}</dd>
         <dt>待补证据</dt><dd>${p.pending.map(escapeHtml).join('；')}</dd>
         <dt>证据等级</dt><dd>${escapeHtml(p.evidence_level)}：${escapeHtml(p.evidence_note)}</dd></dl>
-        <div class="actions"><button class="secondary" id="show-point">在回放中对照</button><button class="secondary" id="ask-point">让助手说明这一项</button></div>`;
+        <div class="actions"><button class="secondary" id="show-point">在三维沙盘中对照此项</button><button class="secondary" id="ask-point">让助手说明这一项</button></div>`;
     $('show-point').onclick = () => {
-        const [primary, compare] = POINT_VIEW[p.id];
+        if (currentMode !== 'counterfactual') setMode('counterfactual');
+        const [primaryCandidate, compare] = POINT_VIEW[p.id];
+        const primary = record.result.deployments.some(row => row.key === primaryCandidate) ? primaryCandidate : 'baseline';
         $('primary').value = primary;
         $('compare').value = compare;
         $('segment-deployment').value = primary;
         jumpToDifference();
         renderSegments();
+        refreshSpaceLayer();
         $('replay').scrollIntoView({behavior: 'smooth'});
     };
     $('ask-point').onclick = () => {
@@ -256,9 +420,11 @@ async function selectSegment(start, end) {
     preset.value = Array.from(preset.options).some(option => option.value === key) ? key : 'custom';
     $('segment-start').value = times[start];
     $('segment-end').value = times[end];
-    $('time').min = start;
-    $('time').max = end;
-    $('time').value = start;
+    if (currentMode !== 'flight') {
+        $('time').min = start;
+        $('time').max = end;
+        $('time').value = start;
+    }
     const url = new URL(location.href);
     url.searchParams.set('experiment', record.id);
     url.searchParams.set('start', start);
@@ -275,7 +441,8 @@ async function selectSegment(start, end) {
         segmentLinks(start, end);
         $('segment-status').textContent = '';
         $('segment-result').hidden = false;
-        $('assistant-context').textContent = `建筑区 · 实验 ${record.id.slice(0, 8)} · ${report.start_s}–${report.end_s} s。新提问引用本航段。`;
+        const shortScene = SCENE_LABELS[record.inputs.scene.id] || '合成场景';
+        $('assistant-context').textContent = `${shortScene} · 实验 ${record.id.slice(0, 8)} · ${report.start_s}–${report.end_s} s。新提问引用本航段。`;
         $('send').disabled = false;
     } catch (error) {
         if (revision === segmentRevision && selected === record) {
@@ -356,6 +523,82 @@ function mapProjection(canvas) {
     return {scale, X: x => pad + (x - b.x0) * scale, Y: y => canvas.height - pad - (y - b.y0) * scale};
 }
 
+function rayOccludedByBuildings(sx, sy, sz, tx, ty, tz, buildings) {
+    const dx = tx - sx, dy = ty - sy, dz = tz - sz;
+    for (const b of buildings) {
+        let tmin = 0, tmax = 1;
+        const slabs = [[sx, dx, b.x, b.x + b.w], [sy, dy, b.y, b.y + b.d], [sz, dz, 0, b.h]];
+        let hit = true;
+        for (const [origin, dir, low, high] of slabs) {
+            if (Math.abs(dir) < 1e-8) {
+                if (origin < low || origin > high) { hit = false; break; }
+            } else {
+                let t1 = (low - origin) / dir, t2 = (high - origin) / dir;
+                if (t1 > t2) [t1, t2] = [t2, t1];
+                tmin = Math.max(tmin, t1);
+                tmax = Math.min(tmax, t2);
+                if (tmin > tmax) { hit = false; break; }
+            }
+        }
+        if (hit && tmin < 0.995 && tmax > 0.005) {
+            return [sx + dx * tmin, sy + dy * tmin, sz + dz * tmin];
+        }
+    }
+    return null;
+}
+
+function updateTwin3D(t) {
+    const scene = record.inputs.scene;
+    const primary = deployment($('primary').value);
+    const bsrc = scene.building_source || 'synthetic';
+    const isFlight = currentMode === 'flight' && flightTracks.length > 0;
+    const activeFlight = isFlight ? (flightTracks[activeFlightIndex] || flightTracks[0]) : null;
+    const activePoints = isFlight ? activeFlight.points : record.inputs.trajectory.points;
+    const activeTimeline = isFlight ? activeFlight.samples : primary.timeline;
+    const activeEllipsoids = isFlight
+        ? activeFlight.samples.map(s => s.ellipsoid)
+        : (spaceData?.ellipsoids || null);
+    const clampedIdx = Math.max(0, Math.min(activePoints.length - 1, t));
+    const [px, py, pz] = activePoints[clampedIdx];
+    const sample = activeTimeline[clampedIdx] || {};
+
+    const anchor = spaceData?.anchor || scene.geographic_anchor || {
+        urban: {latitude: 39.0510, longitude: 115.9810, label: '雄安高密建筑片区'},
+        corridor: {latitude: 39.0015, longitude: 115.9515, label: '雄安物流主干廊道'},
+        electromagnetic: {latitude: 39.0485, longitude: 115.9865, label: '雄安复杂电磁区'},
+    }[scene.id] || {latitude: 39.0510, longitude: 115.9810, label: '雄安新区'};
+
+    if ($('twin3d-hud')) {
+        const crlbStr = sample.crlb_m == null ? '单站/盲区不可解算' : `${sample.crlb_m.toFixed(1)} m`;
+        $('twin3d-hud').innerHTML =
+            `<div><b>${escapeHtml(MODE_LABELS[currentMode])}</b> · ${escapeHtml(anchor.label || scene.name)}（${anchor.latitude.toFixed(4)}°N, ${anchor.longitude.toFixed(4)}°E）</div>` +
+            `<div>当前方案：<b>${escapeHtml(primary.label)}</b>（新增 ${primary.added.length} 站） · 时刻 <b>t=${clampedIdx} s</b> · 坐标 (${Math.round(px)}, ${Math.round(py)}, <b>${pz} m</b>)</div>` +
+            `<div>探测概率 Pd：<b>${sample.pd == null ? '—' : sample.pd.toFixed(2)}</b> · 共视基站：<b>${sample.stations ?? 0} 座</b> · 三维定位界 CRLB：<b>${crlbStr}</b></div>`;
+    }
+
+    if (!engine3d) return;
+    engine3d.update({
+        sceneId: scene.id,
+        buildingSource: bsrc,
+        anchor,
+        buildings: spaceData?.buildings || scene.buildings,
+        footprints: spaceData?.footprints || [],
+        zone: scene.zone,
+        devices: primary.devices,
+        addedIds: primary.added,
+        points: activePoints,
+        timeline: activeTimeline,
+        ellipsoids: activeEllipsoids,
+        segmentRange: isFlight ? null : segmentRange,
+        timeIndex: clampedIdx,
+        showImagery: !$('twin3d-imagery') || $('twin3d-imagery').checked,
+        showLos: !$('twin3d-los') || $('twin3d-los').checked,
+        showEllipsoid: !$('twin3d-ellipsoid') || $('twin3d-ellipsoid').checked,
+        showFov: !$('twin3d-fov') || $('twin3d-fov').checked,
+        showLabels: !$('twin3d-labels') || $('twin3d-labels').checked,
+    });
+}
+
 function drawMap(t) {
     const canvas = $('map'), ctx = canvas.getContext('2d');
     const {scale, X, Y} = mapProjection(canvas);
@@ -364,7 +607,7 @@ function drawMap(t) {
     for (const bd of scene.buildings) {
         const shade = Math.min(1, bd.h / 110);
         ctx.fillStyle = `rgba(160,180,200,${0.25 + 0.5 * shade})`;
-        ctx.fillRect(X(bd.x), Y(bd.y + bd.d), bd.w * scale, bd.d * scale);
+        ctx.fillRect(X(bd.x), Y(bd.y + bd.d), Math.max(2, bd.w * scale), Math.max(2, bd.d * scale));
     }
     ctx.strokeStyle = 'rgba(255,255,255,.35)';
     for (const c of scene.candidates) {
@@ -388,6 +631,7 @@ function drawMap(t) {
         if (added.has(d.id)) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke(); ctx.lineWidth = 1; }
     }
     const points = record.inputs.trajectory.points;
+    const mapIdx = Math.min(points.length - 1, t);
     for (let i = 1; i < points.length; i++) {
         const inRange = segmentRange && i > segmentRange.start && i <= segmentRange.end;
         ctx.strokeStyle = inRange ? STATE[primary.timeline[i].state][0] : '#607584';
@@ -398,7 +642,7 @@ function drawMap(t) {
         ctx.stroke();
     }
     ctx.lineWidth = 1;
-    const [px, py, pz] = points[t];
+    const [px, py, pz] = points[mapIdx];
     ctx.fillStyle = '#fff';
     ctx.beginPath();
     ctx.arc(X(px), Y(py), 8, 0, 2 * Math.PI);
@@ -408,13 +652,14 @@ function drawMap(t) {
     ctx.fillText('✈', X(px) - 6, Y(py) + 4);
     ctx.fillStyle = '#fff';
     ctx.font = '13px system-ui';
-    ctx.fillText(`${primary.label} · t=${t} s · 高度 ${pz} m`, 12, 20);
+    ctx.fillText(`${primary.label} · t=${mapIdx} s · 高度 ${pz} m`, 12, 20);
 }
 
 function drawStrips(t) {
     const canvas = $('strips'), ctx = canvas.getContext('2d');
     const rows = record.result.deployments, n = record.inputs.trajectory.points.length;
-    const left = 150, h = (canvas.height - 10) / rows.length, w = (canvas.width - left - 6) / n;
+    const idx = Math.min(n - 1, t);
+    const left = 155, h = (canvas.height - 10) / rows.length, w = (canvas.width - left - 6) / n;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.font = '12px system-ui';
     rows.forEach((row, r) => {
@@ -422,7 +667,7 @@ function drawStrips(t) {
         ctx.fillText(row.label.replace('反事实：', ''), 4, r * h + h / 2 + 8);
         row.timeline.forEach((s, i) => {
             ctx.fillStyle = STATE[s.state][0];
-            ctx.fillRect(left + i * w, r * h + 6, Math.ceil(w), h - 6);
+            ctx.fillRect(left + i * w, r * h + 5, Math.ceil(w), h - 6);
         });
     });
     if (segmentRange) {
@@ -433,8 +678,8 @@ function drawStrips(t) {
     ctx.strokeStyle = '#112e43';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(left + (t + 0.5) * w, 0);
-    ctx.lineTo(left + (t + 0.5) * w, canvas.height);
+    ctx.moveTo(left + (idx + 0.5) * w, 0);
+    ctx.lineTo(left + (idx + 0.5) * w, canvas.height);
     ctx.stroke();
     ctx.lineWidth = 1;
 }
@@ -443,6 +688,7 @@ function drawErrors(t) {
     const canvas = $('errors'), ctx = canvas.getContext('2d');
     const primary = deployment($('primary').value), compare = deployment($('compare').value);
     const limit = record.inputs.environment.precision_m, top = limit * 3, n = primary.timeline.length;
+    const idx = Math.min(n - 1, t);
     const left = 40, right = 8, pad = 14;
     const X = i => left + i * (canvas.width - left - right) / (n - 1);
     const Y = v => canvas.height - pad - Math.min(v, top) / top * (canvas.height - 2 * pad);
@@ -471,13 +717,14 @@ function drawErrors(t) {
         if (s.simulated_median_error_m != null) { ctx.beginPath(); ctx.arc(X(i), Y(s.simulated_median_error_m), 2.2, 0, 2 * Math.PI); ctx.fill(); }
     });
     ctx.strokeStyle = '#112e43';
-    ctx.beginPath(); ctx.moveTo(X(t), pad / 2); ctx.lineTo(X(t), canvas.height - pad / 2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(X(idx), pad / 2); ctx.lineTo(X(idx), canvas.height - pad / 2); ctx.stroke();
 }
 
 function drawSample(t) {
+    const idx = Math.min(record.inputs.trajectory.points.length - 1, t);
     $('sample').innerHTML = table(['方案', '状态', '探测概率', '覆盖站数', 'CRLB', '模拟误差中位数', '模拟可定位比例'],
         record.result.deployments.map(row => {
-            const s = row.timeline[t];
+            const s = row.timeline[idx];
             return [escapeHtml(row.label.replace('反事实：', '')), `<span style="color:${STATE[s.state][0]}">●</span> ${escapeHtml(s.cause)}`,
                 s.pd == null ? '—' : s.pd.toFixed(2), s.stations, meters(s.crlb_m), meters(s.simulated_median_error_m), pct(s.simulated_fix_fraction)];
         }));
@@ -486,7 +733,9 @@ function drawSample(t) {
 function draw() {
     if (!record) return;
     const t = +$('time').value;
-    $('time-label').textContent = `${record.inputs.trajectory.times[t]} s`;
+    const times = record.inputs.trajectory.times;
+    $('time-label').textContent = `${currentMode === 'flight' ? t : (times[Math.min(times.length - 1, t)] ?? t)} s`;
+    updateTwin3D(t);
     drawMap(t);
     drawStrips(t);
     drawErrors(t);
@@ -508,7 +757,35 @@ function togglePlay() {
         const next = +$('time').value < +$('time').max ? +$('time').value + 1 : +$('time').min;
         $('time').value = next;
         draw();
-    }, 250);
+    }, 220);
+}
+
+function selectContinuousSegmentAt(index) {
+    if (index < 0 || !record) return;
+    const {timeline} = deployment($('primary').value);
+    const target = timeline[index];
+    const same = item => item && item.state === target.state && item.cause === target.cause;
+    let start = index, end = index;
+    while (same(timeline[start - 1])) start--;
+    while (same(timeline[end + 1])) end++;
+    selectSegment(start, end);
+}
+
+$('twin-modes')?.addEventListener?.('click', event => {
+    const btn = event.target?.closest?.('[data-mode]');
+    if (btn) setMode(btn.dataset.mode);
+});
+$('field-altitude')?.addEventListener?.('change', refreshSpaceLayer);
+$('flight-track-select')?.addEventListener?.('change', () => {
+    activeFlightIndex = Number($('flight-track-select').value) || 0;
+    syncFlightTimeline();
+    draw();
+});
+$('twin3d-reset')?.addEventListener?.('click', () => engine3d?.homeView());
+$('twin3d-side')?.addEventListener?.('click', () => engine3d?.sideView());
+$('twin3d-top')?.addEventListener?.('click', () => engine3d?.topView());
+for (const id of ['twin3d-imagery', 'twin3d-los', 'twin3d-ellipsoid', 'twin3d-fov', 'twin3d-labels']) {
+    $(id)?.addEventListener?.('change', draw);
 }
 
 $('chain').addEventListener('click', event => {
@@ -538,26 +815,19 @@ $('map').addEventListener('click', event => {
         const distance = Math.hypot(screenX - event.clientX, screenY - event.clientY);
         if (distance < nearest) { nearest = distance; index = i; }
     });
-    if (index < 0) return;
-    const {timeline} = deployment($('primary').value);
-    const target = timeline[index];
-    const same = item => item && item.state === target.state && item.cause === target.cause;
-    let start = index, end = index;
-    while (same(timeline[start - 1])) start--;
-    while (same(timeline[end + 1])) end++;
-    selectSegment(start, end);
+    if (index >= 0) selectContinuousSegmentAt(index);
 });
 $('strips').addEventListener('click', event => {
     if (!record) return;
     const rect = event.target.getBoundingClientRect(), n = record.inputs.trajectory.points.length;
     const x = (event.clientX - rect.left) * event.target.width / rect.width;
-    if (x < 150) return;
-    const index = Math.floor((x - 150) / ((event.target.width - 156) / n));
+    if (x < 155) return;
+    const index = Math.floor((x - 155) / ((event.target.width - 161) / n));
     $('time').value = Math.max(+$('time').min, Math.min(+$('time').max, index));
     draw();
 });
 $('time').addEventListener('input', draw);
-$('primary').addEventListener('change', draw);
+$('primary').addEventListener('change', () => { refreshSpaceLayer(); draw(); });
 $('compare').addEventListener('change', draw);
 $('segment-deployment').addEventListener('change', renderSegments);
 $('play').addEventListener('click', togglePlay);
@@ -565,10 +835,25 @@ $('run').addEventListener('click', runExperiment);
 $('recompute').addEventListener('click', recompute);
 $('history').addEventListener('change', () => open($('history').value).catch(error => status(error.message, true)));
 
+async function switchEnvironment() {
+    const chosen = $('scene')?.value || 'urban';
+    const bsrc = $('building-source')?.value || 'synthetic';
+    try {
+        const {experiments} = await api('/api/twin-experiments?scene=' + encodeURIComponent(chosen));
+        const match = experiments.find(item => (item.building_source || 'synthetic') === bsrc);
+        if (match) await open(match.id);
+        else await runExperiment();
+    } catch (error) {
+        status('切换环境失败：' + error.message, true);
+    }
+}
+$('scene')?.addEventListener?.('change', switchEnvironment);
+$('building-source')?.addEventListener?.('change', switchEnvironment);
+
 // ---------- 研究助手 ----------
 const CHIPS = [
     '五个子项目之间是什么关系？哪一项的必要性在本实验中证据最强？',
-    '规划时忽略遮挡或干扰，放回参考环境后差多少？',
+    '规划时忽略遮挡、忽略干扰或仅按覆盖选址，放回参考环境后差多少？',
     '补站后的改善和增加的费用分别是多少？',
     '当前考核指标版本是什么？哪些只是历史对照？',
     '这些孪生结果能否写成外场精度？还缺哪些证据？',
@@ -649,7 +934,7 @@ $('ask').addEventListener('submit', async event => {
     busy(true);
     try {
         const item = await api('/api/research-agent/runs', {method: 'POST', body: JSON.stringify({
-            question, workflow: 'platform', scene: 'urban', skill: 'twin_experiment',
+            question, workflow: 'platform', scene: record.inputs.scene.id || 'urban', skill: 'twin_experiment',
             twin_segment: {experiment_id: record.id, ...segmentRange}, mode: $('review').checked ? 'review' : 'single', session_id: session})});
         run = item.id;
         $('question').value = '';
@@ -711,6 +996,23 @@ async function start() {
     if (!workbench) restoreAssistant();
     const query = new URLSearchParams(location.search);
     const id = query.get('experiment');
+    const requestedScene = query.get('scene');
+    const requestedMode = query.get('mode');
+    if (['urban', 'corridor', 'electromagnetic'].includes(requestedScene) && $('scene')) {
+        $('scene').value = requestedScene;
+    }
+    if (MODE_LABELS[requestedMode]) {
+        currentMode = requestedMode;
+        if ($('twin-modes')) {
+            for (const btn of $('twin-modes').querySelectorAll?.('[data-mode]') || []) {
+                btn.classList?.toggle?.('active', btn.dataset.mode === requestedMode);
+            }
+        }
+        if ($('mode-summary-pill')) $('mode-summary-pill').textContent = MODE_LABELS[requestedMode];
+        if ($('mode-toolbar')) $('mode-toolbar').hidden = requestedMode === 'counterfactual';
+        if ($('altitude-slice-wrap')) $('altitude-slice-wrap').hidden = !(requestedMode === 'coverage' || requestedMode === 'precision');
+        if ($('flight-track-wrap')) $('flight-track-wrap').hidden = requestedMode !== 'flight';
+    }
     try {
         const experiments = await loadHistory(id);
         if (id) {
@@ -718,8 +1020,15 @@ async function start() {
             const range = query.has('start') || query.has('end')
                 ? {start: query.get('start'), end: query.get('end')} : null;
             await open(id, range);
-        } else if (experiments.length) await open(experiments[0].id);
-        else await runExperiment();
+        } else if (requestedScene && ['urban', 'corridor', 'electromagnetic'].includes(requestedScene)) {
+            const match = experiments.find(item => item.scene === requestedScene);
+            if (match) await open(match.id);
+            else await runExperiment();
+        } else if (experiments.length) {
+            await open(experiments[0].id);
+        } else {
+            await runExperiment();
+        }
     } catch (error) {
         status('无法读取实验档案：' + error.message, true);
     }
