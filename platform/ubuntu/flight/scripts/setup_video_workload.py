@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 import urllib.request
 
-root = Path(os.environ.get('FLIGHT_VISION_ASSETS', '/tmp/lowair-vision-assets'))
+root = Path(os.environ.get('FLIGHT_VISION_ASSETS', Path(os.environ.get('FLIGHT_DATA_DIR', Path(__file__).resolve().parents[1] / 'data')) / 'vision-assets'))
 root.mkdir(parents=True, exist_ok=True)
 assets = [
     ('vtest.avi', 'https://raw.githubusercontent.com/opencv/opencv/4.11.0/samples/data/vtest.avi',

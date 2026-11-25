@@ -2,10 +2,13 @@
 import atexit
 import argparse
 import json
+import sys
 import time
 import uuid
 from pathlib import Path
 import httpx
+sys.path.insert(0,str(Path(__file__).resolve().parent))
+import verify_compute_chain
 
 parser=argparse.ArgumentParser()
 parser.add_argument('--url',default='http://127.0.0.1:8773')
@@ -189,6 +192,10 @@ try:
         assert any(a.get('network_wait_s',0)>.3 for b in successful for j in b['tasks'].values() for a in j['attempts'])
         assert all(a.get('worker_roundtrip_s',0)>0 for b in successful for j in b['tasks'].values() for a in j['attempts'] if a['status']=='completed')
         report['network_verified']=True
+    chain=verify_compute_chain.verify(c,execution['record_id'])
+    report['chain']=chain
+    assert chain['passed'],chain.get('error')
+    assert chain['chain']['experiment_id']==experiment['id'] and chain['chain']['application_id']==application['id'] and chain['chain']['task_id']==ident
     report.update(runtime=runtime,batches=batches)
     report.update(result=archive,final_task=final,replay_url=execution['records'][0]['replay_url'])
     Path(args.report).write_text(json.dumps(report,ensure_ascii=False,indent=2))

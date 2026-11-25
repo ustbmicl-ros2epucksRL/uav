@@ -14,7 +14,7 @@ import time
 MODEL = 'ssdlite320_mobilenet_v3_large_coco-a79551df.pth'
 MODEL_SHA256 = 'a79551df90c79834bcd3bb3845ef9d966b5449a3a9b2833ae8404778ca5d65d2'
 VIDEO_SHA256 = '45cddc9490be69345cbdab64ca583be65987e864ca408038e648db99e10516cf'
-ASSETS = Path(os.environ.get('FLIGHT_VISION_ASSETS', '/tmp/lowair-vision-assets'))
+ASSETS = Path(os.environ.get('FLIGHT_VISION_ASSETS', Path(os.environ.get('FLIGHT_DATA_DIR', Path(__file__).resolve().parents[1] / 'data')) / 'vision-assets'))
 _model = None
 _categories = None
 

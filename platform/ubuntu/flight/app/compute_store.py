@@ -2,6 +2,8 @@
 import json
 from .flight_records import connect
 
+BINDING = ('runtime_id', 'record_id', 'execution_id', 'task_id', 'experiment_id')
+
 
 def save(snapshot, batch=None):
     with connect() as db:
@@ -9,9 +11,10 @@ def save(snapshot, batch=None):
         db.execute('INSERT OR REPLACE INTO compute_snapshots VALUES (?,?,?,?)',
                    (snapshot['runtime_id'], snapshot['at'], snapshot['record_id'], json.dumps(snapshot, allow_nan=False)))
         if batch:
+            binding = {key: snapshot.get(key) for key in BINDING}
             db.execute('CREATE TABLE IF NOT EXISTS compute_batches (id TEXT PRIMARY KEY, record_id TEXT, body TEXT)')
             db.execute('INSERT OR REPLACE INTO compute_batches VALUES (?,?,?)',
-                       (batch['id'], snapshot['record_id'], json.dumps(batch, allow_nan=False)))
+                       (batch['id'], snapshot['record_id'], json.dumps({**batch, **binding}, allow_nan=False)))
 
 
 def history(record_id):

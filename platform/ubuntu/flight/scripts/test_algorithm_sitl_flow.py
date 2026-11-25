@@ -75,7 +75,7 @@ try:
     report['compute_samples']=len({p['at'] for p in samples})
     report.update(result=archive,final_task=final,replay_url=execution['records'][0]['replay_url'])
     Path(args.report).write_text(json.dumps(report,ensure_ascii=False,indent=2))
-    print('PASS algorithm mission, approval, SITL upload, flight, telemetry-driven HEFT, sync, durable replay',flush=True)
+    print('PASS algorithm mission, approval, SITL upload, flight, telemetry-driven HEFT, sync, durable replay (HEFT previews only; no compute batches — use test_process_sitl_flow.py + verify_compute_chain.py)',flush=True)
 finally:
     if request('GET','/api/sitl')['telemetry'].get('armed'):
         command('land')
