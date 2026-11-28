@@ -6,9 +6,9 @@
     <meta name="color-scheme" content="light">
     <title>低空统一工作台</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="/static/unified-workspace.css?v=20261124d">
-    <script src="/static/workspace-business-links.js?v=20261124d" defer></script>
-    <script src="/static/unified-workspace.js?v=20261124d" defer></script>
+    <link rel="stylesheet" href="/static/unified-workspace.css?v=20261125a">
+    <script src="/static/workspace-business-links.js?v=20261125a" defer></script>
+    <script src="/static/unified-workspace.js?v=20261125a" defer></script>
 </head>
 <body>
     <div id="workspace">
@@ -54,35 +54,38 @@
                     </summary>
                     <div class="rail-group-body">
                         <div id="planning-views" class="library-list">
-                            <button type="button" data-planning-path="/network/overview" data-short-label="研究体系"><span class="library-icon view-icon" aria-hidden="true">◈</span>研究体系与可行性</button>
                             <button type="button" data-planning-path="/network/twin" data-short-label="数字孪生"><span class="library-icon view-icon" aria-hidden="true">◈</span>三维实景数字孪生中心</button>
+                            <button type="button" data-planning-path="/network/" data-short-label="三维工作台"><span class="library-icon view-icon" aria-hidden="true">◈</span>三维感知与感反态势台</button>
+                            <button type="button" data-planning-path="/network/modeling" data-short-label="标准建模"><span class="library-icon view-icon" aria-hidden="true">◈</span>感反约束与标准建模</button>
+                            <button type="button" data-planning-path="/network/overview" data-short-label="研究体系"><span class="library-icon view-icon" aria-hidden="true">◈</span>研究体系与反制政策</button>
                             <button type="button" data-planning-path="/network/acceptance" data-short-label="指标验证"><span class="library-icon view-icon" aria-hidden="true">◈</span>细网格指标验证</button>
                             <button type="button" data-planning-path="/network/tasks" data-short-label="任务流"><span class="library-icon view-icon" aria-hidden="true">◈</span>五步规划任务流</button>
                             <button type="button" data-planning-path="/network/demonstration" data-short-label="场景示范"><span class="library-icon view-icon" aria-hidden="true">◈</span>三场景应用示范</button>
-                            <button type="button" data-planning-path="/network/" data-short-label="工作台"><span class="library-icon view-icon" aria-hidden="true">◈</span>经典覆盖与航路台</button>
                         </div>
-                        <p class="rail-synergy" id="platform-synergy">协同边界：感知网络规划为本申报书核心平台；地面站提供航路/云边端/SITL支撑；低空服务提供任务闭环。</p>
+                        <p class="rail-synergy" id="platform-synergy">三维主视窗驱动：覆盖建模、感反电磁兼容与合规引导联动评估。</p>
                     </div>
                 </details>
 
-                <details class="rail-group" id="group-theory-skills">
+                <div class="rail-agent-divider" aria-hidden="true"><span>辅助智能体（按需展开）</span></div>
+
+                <details class="rail-group rail-group-compact" id="group-theory-skills">
                     <summary class="rail-summary">
                         <span class="summary-title">理论 Skill</span>
                         <span class="group-badge" id="badge-theory-skills">立项与机理</span>
                     </summary>
                     <div class="rail-group-body">
-                        <p class="skill-purpose">驱动底部智能体只读核查立项体系、申报原文与五子项目 15 项确定性机理算例（防幻觉可复核）。</p>
+                        <p class="skill-purpose">只读核查立项体系、申报原文与机理算例。</p>
                         <div id="theory-skill-list" class="library-list" aria-busy="true"><p class="rail-note">正在读取理论技能…</p></div>
                     </div>
                 </details>
 
-                <details class="rail-group" id="group-algo-skills">
+                <details class="rail-group rail-group-compact" id="group-algo-skills">
                     <summary class="rail-summary">
                         <span class="summary-title">平台算法 Skill</span>
                         <span class="group-badge" id="badge-algo-skills">规划与协同</span>
                     </summary>
                     <div class="rail-group-body">
-                        <p class="skill-purpose">驱动底部智能体调用单事务冻结快照、感知规划内核与跨平台运行证据（严格只读不控机）。</p>
+                        <p class="skill-purpose">调用冻结快照与跨平台只读证据。</p>
                         <div id="skill-list" class="library-list" aria-busy="true"><p class="rail-note">正在读取平台算法技能…</p></div>
                     </div>
                 </details>
@@ -95,6 +98,7 @@
                     <button type="button" id="nav-toggle" class="icon-button mobile-only" aria-label="打开工作台导航" aria-controls="workspace-nav" aria-expanded="false">
                         <span class="menu-icon" aria-hidden="true"></span>
                     </button>
+                    <button type="button" id="rail-collapse" class="toolbar-button desktop-only" aria-pressed="false" title="折叠或展开左侧栏以放大三维主视窗">侧栏</button>
                     <h2 id="stage-title">区域地面站</h2>
                     <button type="button" id="stage-fullscreen" class="toolbar-button" aria-pressed="false">
                         <span class="expand-icon" aria-hidden="true"></span><span id="fullscreen-label">全屏</span>
@@ -106,9 +110,9 @@
                 <div id="chat-resize" role="separator" aria-orientation="horizontal" aria-label="调整 Chat 高度" aria-controls="chat-frame" tabindex="0" title="拖动或用上下方向键调整高度"></div>
                 <header class="chat-bar">
                     <span class="chat-mark" aria-hidden="true">✦</span>
-                    <h2 id="chat-title">Chat</h2>
-                    <span class="chat-name">只读证据智能体</span>
-                    <span class="chat-hint" id="chat-hint">点选左侧 Skill 或展开即可对话取证</span>
+                    <h2 id="chat-title">智能体助手</h2>
+                    <span class="chat-name">只读取证</span>
+                    <span class="chat-hint" id="chat-hint">按需展开对话核查证据</span>
                     <button type="button" id="chat-toggle" class="toolbar-button" aria-controls="chat-frame" aria-expanded="false">
                         <span id="chat-toggle-label">展开</span><span class="chevron" aria-hidden="true"></span>
                     </button>

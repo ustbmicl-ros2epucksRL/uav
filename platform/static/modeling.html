@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>标准场景参数与约束建模 · 多模态感知网络智能规划平台</title>
+  <link rel="stylesheet" href="static/portal.css?v=20261124d">
+  <link rel="stylesheet" href="static/modeling.css?v=20261127a">
+  <script type="importmap">{"imports":{"three":"./static/vendor/three/three.module.js"}}</script>
+</head>
+<body>
+  <header>
+    <div>
+      <small>SENSING-COUNTERMEASURE EMC &amp; CONSTRAINT MODELING</small>
+      <h1 id="page-title">选址 · 感反兼容 · 航路 · 调度 标准参数与工程约束建模</h1>
+      <p class="header-sub">三维实景选址、授权反制电磁隔离与避障走廊确定性联合求解</p>
+    </div>
+    <div class="header-links">
+      <a href="twin">三维数字孪生中心 →</a>
+      <a href="overview">研究体系 →</a>
+      <a href="./">三维态势台 ↗</a>
+    </div>
+  </header>
+
+  <nav id="navigation" aria-label="规划功能">
+    <a href="twin">三维数字孪生</a>
+    <a href="modeling" class="active">感反约束建模</a>
+    <a href="overview">研究总览</a>
+    <a href="tasks">规划任务</a>
+    <a href="diagnosis">感知诊断</a>
+    <a href="planning">网络规划</a>
+    <a href="acceptance">任务验证</a>
+    <a href="demonstration">示范应用</a>
+  </nav>
+
+  <main class="modeling-main">
+    <section class="card control-strip">
+      <div class="control-row">
+        <label>典型场景
+          <select id="scene-select">
+            <option value="urban">园区高密度建筑区</option>
+            <option value="corridor">物流主干道路</option>
+            <option value="electromagnetic">园区复杂电磁区</option>
+          </select>
+        </label>
+        <label>建筑三维遮挡源
+          <select id="building-source">
+            <option value="synthetic">合成基准体块（可复算对照）</option>
+            <option value="xiongan_gba">雄安新区 GBA 建筑轮廓</option>
+            <option value="beijing_osm">北京实景 OSM 建筑轮廓</option>
+          </select>
+        </label>
+        <div class="control-actions">
+          <button type="button" id="btn-solve-all">三阶段联合校验与求解</button>
+          <button type="button" id="btn-check" class="secondary">校验约束</button>
+          <button type="button" id="btn-save" class="secondary">保存参数</button>
+          <button type="button" id="btn-reset" class="secondary">重置模板</button>
+          <button type="button" id="btn-export" class="secondary">导出 JSON</button>
+        </div>
+      </div>
+      <div class="status-meta-bar">
+        <p id="status-bar" class="status-note" role="status">正在加载标准参数与约束模型…</p>
+        <span class="version-pill" id="schema-pill">standard-modeling-v1</span>
+      </div>
+    </section>
+
+    <section class="kpi-strip" id="kpi-strip" aria-label="三阶段求解摘要"></section>
+
+    <section class="card modeling-3d-card">
+      <div class="visual-head">
+        <div>
+          <h3>三维选址、授权反制电磁隔离环与感知走廊耦合沙盘</h3>
+          <p class="muted">青色/白色杆塔：既有/新增多模态站 · 琥珀锥体：法定授权反制电磁扇区 · 绿虚环：RF防阻塞安全隔离距 · 绿/红管道：三维感知避障航路</p>
+        </div>
+        <div class="control-actions">
+          <button type="button" class="secondary" id="mod3d-side">低空侧视</button>
+          <button type="button" class="secondary" id="mod3d-top">正射俯视</button>
+          <button type="button" class="secondary" id="mod3d-reset">全景视角</button>
+        </div>
+      </div>
+      <div id="modeling-3d-viewport" class="modeling-3d-viewport" aria-label="标准建模三维耦合视窗"></div>
+    </section>
+
+    <details class="card fold-modeling" open>
+      <summary>二维平面耦合投影与三级任务调度时序甘特图</summary>
+      <div class="visual-grid" style="margin-top:10px">
+        <article class="visual-card">
+          <div class="visual-head">
+            <div>
+              <h3>平面耦合：站址隔离 + 反制扇区 + 避障航路</h3>
+            </div>
+            <span class="pill" id="spatial-pill">2000m × 2000m</span>
+          </div>
+          <canvas id="spatial-canvas" width="620" height="320" aria-label="选址与航路耦合空间画布"></canvas>
+        </article>
+
+        <article class="visual-card">
+          <div class="visual-head">
+            <div>
+              <h3>三级任务调度甘特图：机群 · 云台 · 云边端 DAG</h3>
+            </div>
+            <select id="gantt-mode" aria-label="调度图层切换">
+              <option value="fleet">1. 机群飞行任务排班</option>
+              <option value="turret">2. 地面传感器云台波束排程</option>
+              <option value="dag">3. 云边端显存与争用 DAG</option>
+            </select>
+          </div>
+          <canvas id="gantt-canvas" width="620" height="320" aria-label="三级任务调度时序画布"></canvas>
+        </article>
+      </div>
+    </details>
+
+    <details class="card fold-modeling">
+      <summary>展开参数编辑台账与 19 项工程/电磁兼容硬约束核验清单</summary>
+      <div style="margin-top:12px">
+      <div class="stage-tabs" role="tablist" aria-label="三阶段建模参数与约束面板">
+        <button type="button" role="tab" data-tab="siting" class="tab-btn active">1. 设备选址参数与工程约束</button>
+        <button type="button" role="tab" data-tab="routing" class="tab-btn">2. 航路规划参数与动力学/空域约束</button>
+        <button type="button" role="tab" data-tab="scheduling" class="tab-btn">3. 三级任务调度参数与争用约束</button>
+        <button type="button" role="tab" data-tab="checks" class="tab-btn">4. 19项硬约束逐项核验清单</button>
+      </div>
+
+      <div id="panel-siting" class="tab-panel">
+        <div class="panel-head">
+          <div>
+            <h3>设备选址：环境衰减、站址承重/市电/光纤准入与电磁兼容隔离约束</h3>
+            <p class="muted">直接约束候选设备组合可行域：不满足承重/光纤/市电/准入或违反雷达同频、雷达-RF阻塞隔离距的组合自动剔除。</p>
+          </div>
+          <button type="button" id="btn-solve-siting">单阶段重算设备选址</button>
+        </div>
+        <div class="param-grid" id="siting-params"></div>
+        <h4>工程站址台账（可逐站修改承重、供电、带宽、市电/光纤/场地准入）</h4>
+        <div class="table-wrap" id="siting-sites-table"></div>
+        <div id="siting-outcome" class="outcome-box"></div>
+      </div>
+
+      <div id="panel-routing" class="tab-panel" hidden>
+        <div class="panel-head">
+          <div>
+            <h3>航路规划：机型动力学/风场续航、时效禁飞区、多机间隔与感知走廊耦合</h3>
+            <p class="muted">将第一阶段选址后的三维感知场作为航路规划空间代价（惩罚感知盲区与低精度网格），同时校验抗风真空速、转弯半径、剩余 SoC 与四维防撞。</p>
+          </div>
+          <button type="button" id="btn-solve-routing">单阶段重算耦合航路</button>
+        </div>
+        <div class="param-grid" id="routing-params"></div>
+        <h4>时效禁飞区与邻机四维协同走廊</h4>
+        <div class="table-wrap" id="routing-nfz-table"></div>
+        <div id="routing-outcome" class="outcome-box"></div>
+      </div>
+
+      <div id="panel-scheduling" class="tab-panel" hidden>
+        <div class="panel-head">
+          <div>
+            <h3>任务调度：机群时间窗机位排班 + 传感器云台驻留 + 云边端显存/争用 DAG</h3>
+            <p class="muted">统一覆盖飞行任务级（载重/电量/充电周转/机位锁/飞手并发）、地面波束级（机械转速/驻留/重访上限）与边缘算力级（内存/GPU显存/共享无线争用）。</p>
+          </div>
+          <button type="button" id="btn-solve-scheduling">单阶段重算三级调度</button>
+        </div>
+        <div class="param-grid" id="scheduling-params"></div>
+        <h4>多优先级飞行任务队列（可在线调整载重、能耗、时间窗与截止期）</h4>
+        <div class="table-wrap" id="scheduling-missions-table"></div>
+        <h4>云边端算力节点资源台账（含内存 GB 与 GPU 显存 GB 硬约束）</h4>
+        <div class="table-wrap" id="scheduling-nodes-table"></div>
+        <div id="scheduling-outcome" class="outcome-box"></div>
+      </div>
+
+      <div id="panel-checks" class="tab-panel" hidden>
+        <div class="panel-head">
+          <div>
+            <h3>全链路 19 项物理、工程、空域与资源硬约束核验清单</h3>
+            <p class="muted">任何参数修改后点击“三阶段联合校验与求解”，下表实时给出每条硬约束的实测值、门限值与合规结论。</p>
+          </div>
+        </div>
+        <div class="table-wrap" id="checks-table"></div>
+      </div>
+      </div>
+    </details>
+  </main>
+
+  <footer>局部平面坐标 0–2000 m，预算单位万元。授权反制点位仅作为外部强电磁兼容约束边界（《条例》第43条），平台不输出反制发射指令。</footer>
+  <script type="module" src="static/modeling-3d.js?v=20261127a"></script>
+  <script src="static/modeling.js?v=20261127a" defer></script>
+</body>
+</html>

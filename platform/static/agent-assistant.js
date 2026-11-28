@@ -15,7 +15,7 @@
         *{box-sizing:border-box} [hidden]{display:none!important}
         button,a{font:inherit}button{cursor:pointer;border:1px solid #b9cbd5;border-radius:8px;padding:9px 13px;background:white;color:#203344}
         button:focus-visible,a:focus-visible{outline:3px solid #57bfc9;outline-offset:3px}
-        .launcher{position:fixed;right:20px;bottom:22px;z-index:2100;background:#146d80;color:white;border:0;box-shadow:0 4px 18px #102f4333;padding:12px 18px}
+        .launcher{position:fixed;right:16px;bottom:14px;z-index:2100;background:rgba(20,109,128,.88);color:white;border:0;border-radius:999px;box-shadow:0 3px 12px #102f4328;padding:6px 12px;font-size:12px;backdrop-filter:blur(6px)}
         .panel{position:fixed;right:14px;top:14px;bottom:14px;width:min(450px,calc(100vw - 28px));z-index:2100;display:flex;flex-direction:column;overflow:hidden;border:1px solid #bfd0dc;border-radius:14px;background:#f3f6fa;box-shadow:0 12px 45px #102f4344}
         .heading{display:flex;align-items:center;gap:10px;padding:12px 14px;background:#142e43;color:white}
         .heading strong{font-size:17px;flex:1}.heading a{color:#cde8f0;font-size:12px}.heading button{padding:6px 10px}

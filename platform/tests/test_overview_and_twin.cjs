@@ -38,6 +38,7 @@ test('twin 3D ray occlusion and verdict support all three scenes and coverage_on
     get('budget').value = '50';
     get('seeds').value = '6';
     get('precision').value = '30';
+    get('twin3d-jamming').checked = false;
 
     const samplePoint = state => ({state, cause: '测试', pd: 0.9, crlb_m: 18, stations: 2, simulated_median_error_m: 14, simulated_fix_fraction: 1});
     const makeRow = (key, label, pass, gap) => ({
@@ -112,6 +113,10 @@ test('twin 3D ray occlusion and verdict support all three scenes and coverage_on
     assert.equal(get('mode-toolbar').hidden, false);
     vm.runInContext("setMode('flight')", context);
     assert.equal(get('mode-summary-pill').textContent, '无人机航路与跨站跟踪孪生');
+    assert.match(get('twin3d-cm-hud').innerHTML, /感反协同与合规引导/);
+    get('twin3d-jamming').checked = true;
+    vm.runInContext('draw()', context);
+    assert.match(get('twin3d-cm-hud').innerHTML, /开启\(RF通道受抑关闭\)/);
 });
 
 test('overview page renders 5-subproject DAG and 4-dimensional feasibility', async () => {

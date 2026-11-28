@@ -3,7 +3,7 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
     color: #1c3142;
     background: #d5e0ea;
-    --rail-width: 242px;
+    --rail-width: 224px;
     --shell-gutter: #d3dee8;
     --rail: #dfe7ef;
     --rail-card: #ebf1f6;
@@ -13,7 +13,7 @@
     --accent-soft: #dcebf4;
     --frame-border: #b3c5d5;
     --line: #cfdce6;
-    --dock-height: clamp(205px, 30dvh, 360px);
+    --dock-height: clamp(190px, 26dvh, 320px);
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: var(--shell-gutter); }
@@ -148,7 +148,29 @@ button:focus-visible, summary:focus-visible, [tabindex]:focus-visible { outline:
 
 #main-workspace {
     display: flex; flex-direction: column; height: 100%; min-width: 0; min-height: 0;
-    padding: 7px 8px 8px 8px; gap: 7px; background: var(--shell-gutter);
+    padding: 4px 6px 5px 6px; gap: 4px; background: var(--shell-gutter);
+}
+#workspace.rail-collapsed {
+    grid-template-columns: 0px minmax(0, 1fr);
+}
+#workspace.rail-collapsed #workspace-nav {
+    border-right: 0;
+    box-shadow: none;
+}
+.rail-agent-divider {
+    margin: 4px 2px 0;
+    padding-top: 6px;
+    border-top: 1px dashed #bccdd9;
+    font-size: 11px;
+    color: #5b7488;
+    text-align: center;
+}
+.rail-group-compact {
+    opacity: 0.9;
+}
+.rail-group-compact > .rail-summary {
+    padding: 6px 10px;
+    font-size: 12px;
 }
 #business-stage {
     display: flex; flex: 1 1 auto; min-height: 0; min-width: 0; flex-direction: column;
@@ -156,8 +178,8 @@ button:focus-visible, summary:focus-visible, [tabindex]:focus-visible { outline:
     border: 1px solid var(--frame-border);
     box-shadow: 0 3px 12px rgba(20, 44, 68, 0.1);
 }
-.stage-bar, .chat-bar { display: flex; align-items: center; flex: none; gap: 10px; background: #f7fafc; padding: 0 15px; }
-.stage-bar { min-height: 40px; border-bottom: 1px solid #d2dee8; }
+.stage-bar, .chat-bar { display: flex; align-items: center; flex: none; gap: 10px; background: #f7fafc; padding: 0 12px; }
+.stage-bar { min-height: 34px; border-bottom: 1px solid #d2dee8; }
 .stage-bar h2, .chat-bar h2 { margin: 0; font-size: 14px; line-height: 1.3; font-weight: 650; color: #182f42; }
 .stage-bar h2 { flex: 1; display: flex; align-items: center; gap: 8px; }
 .stage-bar h2::before {

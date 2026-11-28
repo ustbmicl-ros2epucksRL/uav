@@ -21,7 +21,7 @@ def client(tmp_path, monkeypatch):
 
 def test_catalog_scope_and_unknown_commands(client):
     catalog = client.get('/api/research-agent/tools').json()
-    assert len(catalog['tools']) == len(tools.DESCRIPTIONS) == 12
+    assert len(catalog['tools']) == len(tools.DESCRIPTIONS) == 13
     assert {t['category'] for t in catalog['tools']} == {'theory', 'platform_planning', 'platform_collab'}
     assert [m['task_id'] for m in catalog['theory_mechanisms']] == [1, 2, 3, 4, 5]
     assert set(catalog['skill_taxonomy']) == {'theory', 'platform_algorithm'}
@@ -76,6 +76,23 @@ def test_actual_coverage_tool_uses_frozen_scene(client):
     assert 0 <= evidence['data']['stats']['coverage'] <= 1
     assert evidence['data']['weak_regions']
     assert store.get('scene:urban') is None
+
+
+def test_standard_modeling_tool_reads_snapshot_without_mutation(client):
+    empty = tools.execute('standard_modeling', tools.snapshot({'scene': 'urban'}))
+    assert empty['provenance'] == 'standard_constraint_model'
+    assert empty['data']['paradigm']['requires_training_data'] is False
+    assert empty['data']['latest_solve']['available'] is False
+    from app import standard_modeling as sm
+    spec = sm.default_spec('urban')
+    solved = sm.run_pipeline('urban', spec, 'all')
+    store.put('modeling:spec:urban', spec)
+    store.put('modeling:result:urban', solved)
+    evidence = tools.execute('standard_modeling', tools.snapshot({'scene': 'urban'}))
+    assert evidence['data']['spec_saved'] is True
+    assert evidence['data']['latest_solve']['available'] is True
+    assert evidence['data']['latest_solve']['total_checks'] == 19
+    assert evidence['data']['latest_solve']['all_feasible'] is True
 
 
 @pytest.mark.parametrize('mode', ['single', 'review'])

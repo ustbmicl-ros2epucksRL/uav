@@ -31,6 +31,54 @@ class TwinSpaceRequest(BaseModel):
     altitude_m: float | None = Field(default=None, ge=30, le=300)
     cell_m: float = Field(default=80, ge=40, le=200)
     precision_m: float = Field(default=30, gt=0, le=500)
+    jamming_active: bool = False
+
+
+def countermeasure_sites_for(scene_id: str) -> list[dict]:
+    sites = [
+        dict(
+            id='CM-AUTH-01',
+            name='重点区西南授权定向反制站',
+            x=680.0, y=680.0, z=48.0,
+            azimuth=45.0, fov=85.0, range=560.0,
+            rf_isolation_m=180.0,
+            authority='公安/重点目标法定授权点位（《条例》第43条），平台仅作感反电磁兼容与引导评估',
+        ),
+    ]
+    if scene_id == 'electromagnetic':
+        sites.append(dict(
+            id='CM-AUTH-02',
+            name='变电核心区东北受控压制点',
+            x=1250.0, y=1180.0, z=52.0,
+            azimuth=225.0, fov=80.0, range=520.0,
+            rf_isolation_m=180.0,
+            authority='重点设施受控电磁防控点（外部授权设施，本平台不下发控制指令）',
+        ))
+    return sites
+
+
+def _countermeasure_meta(env_scene: dict, volume: core.Volume, jamming_active: bool):
+    cm_sites = countermeasure_sites_for(env_scene['id'])
+    min_rf_dist = None
+    for d in env_scene.get('devices', []):
+        if d.get('status') == 'offline' or d.get('type') != 'RF':
+            continue
+        for cm in cm_sites:
+            dist = float(np.hypot(d['x'] - cm['x'], d['y'] - cm['y']))
+            min_rf_dist = dist if min_rf_dist is None else min(min_rf_dist, dist)
+    eff_volume = volume
+    if jamming_active:
+        eff_volume = volume.model_copy(update={
+            'target_emitting': False,
+            'communication_db': min(40.0, volume.communication_db + 6.0),
+        })
+    return eff_volume, dict(
+        jamming_active=jamming_active,
+        sites=cm_sites,
+        rf_isolation_limit_m=180.0,
+        min_rf_jammer_dist_m=round(min_rf_dist, 1) if min_rf_dist is not None else None,
+        emc_rf_isolated=(min_rf_dist is None or min_rf_dist >= 180.0),
+    )
 
 
 def load(experiment_id):
@@ -174,6 +222,7 @@ def catalog():
 @router.post('/api/twin-space')
 def compute_space(request: TwinSpaceRequest):
     env_scene, volume, bsrc, anchor, footprints, added_ids, dep_label = _resolve_environment(request)
+    volume, cm_meta = _countermeasure_meta(env_scene, volume, request.jamming_active)
     base_payload = dict(
         mode=request.mode,
         scene=env_scene['id'],
@@ -188,6 +237,7 @@ def compute_space(request: TwinSpaceRequest):
         zone=env_scene.get('zone'),
         devices=[{k: d[k] for k in ('id', 'name', 'type', 'x', 'y', 'z', 'azimuth', 'fov', 'range', 'status') if k in d}
                  for d in env_scene['devices']],
+        countermeasure=cm_meta,
         evidence_level='synthetic_and_gis_reference',
     )
 

@@ -193,6 +193,15 @@ def test_unified_twin_catalog_real_buildings_occlusion_and_four_modes(client):
         'mode': 'coverage', 'experiment_id': real_exp['id'], 'deployment': 'method', 'altitude_m': 95, 'cell_m': 100,
     }).json()
     assert cov['voxels'] and 0 <= cov['stats']['coverage'] <= 1
+    assert cov['countermeasure']['jamming_active'] is False
+    assert len(cov['countermeasure']['sites']) >= 1
+
+    cov_jam = client.post('/api/twin-space', json={
+        'mode': 'coverage', 'experiment_id': real_exp['id'], 'deployment': 'method',
+        'altitude_m': 95, 'cell_m': 100, 'jamming_active': True,
+    }).json()
+    assert cov_jam['countermeasure']['jamming_active'] is True
+    assert cov_jam['stats']['coverage'] <= cov['stats']['coverage'] + 1e-9
 
     prec = client.post('/api/twin-space', json={
         'mode': 'precision', 'scene': 'electromagnetic', 'building_source': 'beijing_osm', 'altitude_m': 95, 'cell_m': 100,

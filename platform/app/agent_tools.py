@@ -7,7 +7,7 @@ from typing import Literal
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
-from . import analysis, flight_tools, proposal_kpi, proposal_source, research_overview, store, twin_segment
+from . import analysis, flight_tools, proposal_kpi, proposal_source, research_overview, standard_modeling, store, twin_segment
 from .twin_segment import SegmentRef
 from .scenes import seed
 
@@ -22,6 +22,7 @@ class ToolContext(BaseModel):
 
 DESCRIPTIONS = {
     'research_framework': '读取本项目研究问题、五子项目输入输出关系、重要性、数字孪生反事实必要性、四维可行性及多平台协同边界。',
+    'standard_modeling': '读取所选场景的设备选址、航路规划、三级任务调度标准参数完备性与 19 项工程/空域/显存争用硬约束核验结果（无需训练数据）。',
     'scene_snapshot': '读取所选场景的设备、候选站址数量及配置版本；配置不等于设备实时在线状态。',
     'diagnose_coverage': '对冻结场景执行现有 50 m 网格覆盖基线，返回覆盖率和薄弱区域；不证明 10 m/2 m 指标达标。',
     'planning_records': '读取所选场景最近 20 个规划任务摘要；没有记录时明确返回空列表。',
@@ -34,7 +35,7 @@ DESCRIPTIONS = {
     'flight_records': '在研项目：读取最近的 SITL 飞行档案摘要（时长、采样数、关联业务任务）。',
     'service_tasks': '在研项目：读取低空服务管理平台的任务统计与最近任务（状态、校验结果、执行来源）。',
 }
-ToolName = Literal['research_framework', 'scene_snapshot', 'diagnose_coverage', 'planning_records',
+ToolName = Literal['research_framework', 'standard_modeling', 'scene_snapshot', 'diagnose_coverage', 'planning_records',
                    'assessment_results', 'twin_experiment', 'proposal_kpi', 'proposal_search',
                    'flight_algorithm_runs', 'flight_compute', 'flight_records', 'service_tasks']
 
@@ -48,6 +49,7 @@ CATEGORIES = {
     'research_framework': 'theory',
     'proposal_kpi': 'theory',
     'proposal_search': 'theory',
+    'standard_modeling': 'platform_planning',
     'diagnose_coverage': 'platform_planning',
     'twin_experiment': 'platform_planning',
     'assessment_results': 'platform_planning',
@@ -100,6 +102,10 @@ def snapshot(context):
         archive_key = 'twin-experiment:' + ref.experiment_id if ref else 'twin-experiment-latest:' + context.scene
         twin_row = conn.execute('SELECT value FROM state WHERE key=?', (archive_key,)).fetchone()
         archive = json.loads(twin_row[0]) if twin_row else None
+        mod_spec_row = conn.execute('SELECT value FROM state WHERE key=?', ('modeling:spec:' + context.scene,)).fetchone()
+        mod_res_row = conn.execute('SELECT value FROM state WHERE key=?', ('modeling:result:' + context.scene,)).fetchone()
+        mod_spec = json.loads(mod_spec_row[0]) if mod_spec_row else None
+        mod_result = json.loads(mod_res_row[0]) if mod_res_row else None
     selected = None
     if ref:
         if archive is None:
@@ -108,6 +114,7 @@ def snapshot(context):
             raise HTTPException(422, '所选实验与请求场景不一致')
         selected = twin_segment.analyze(archive, ref.start, ref.end)
     frozen = dict(scene=scene, query=context.query, twin_experiment=None if ref else archive,
+                  modeling_spec=mod_spec, modeling_result=mod_result,
                   tasks=[{key: task[key] for key in ('id', 'name', 'scene', 'revision', 'budget',
                          'target', 'updated_at') if key in task} for task in tasks[:20]],
                   tasks_truncated=len(tasks) > 20, assessments=assessments,
@@ -147,6 +154,35 @@ def execute(name, frozen):
         provenance = 'research_framework_summary'
         source = '/api/research-overview'
         limitations.extend(data.pop('boundaries', []))
+    elif name == 'standard_modeling':
+        spec = frozen.get('modeling_spec') or standard_modeling.default_spec(scene['id'])
+        audit = standard_modeling.static_audit(spec)
+        saved_res = frozen.get('modeling_result')
+        data = dict(
+            scene=scene['id'],
+            spec_saved=frozen.get('modeling_spec') is not None,
+            spec_revision=spec['revision'],
+            audit=audit,
+            latest_solve=(
+                dict(
+                    available=True,
+                    passed_checks=saved_res['passed_checks'],
+                    total_checks=saved_res['total_checks'],
+                    all_feasible=saved_res['all_feasible'],
+                    siting_added_cost=saved_res['siting']['added_cost'],
+                    siting_coverage=saved_res['siting']['after']['coverage'],
+                    route_coverage=saved_res['routing']['summary']['route_coverage'],
+                    fleet_assigned=len(saved_res['scheduling']['fleet']['assignments']),
+                    dag_makespan_s=saved_res['scheduling']['compute_dag']['makespan_s'],
+                    checks=saved_res['checks'],
+                )
+                if saved_res else dict(available=False, note='尚未保存三阶段联合求解结果，可在 /modeling 页面一键运行。')
+            ),
+            paradigm=standard_modeling.SCHEMA_CATALOG['paradigm_distinction'],
+        )
+        provenance = 'standard_constraint_model'
+        source = '/api/modeling/' + scene['id']
+        limitations.append('工程承重、市电光纤、风场与节点显存默认值为标准工程模板，现场施工前需替换为实测台账。')
     elif name == 'scene_snapshot':
         data = dict(scene=scene['id'], name=scene['name'], revision=scene['revision'],
                     input_source=scene.get('input_source', '合成演示配置'),

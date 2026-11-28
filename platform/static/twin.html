@@ -10,41 +10,45 @@
 <header>
   <div>
     <h1 id="page-title">低空多模态感知三维数字孪生中心 · 建筑区</h1>
-    <p>统一实景三维底座（真实卫星底图 · 雄安/高层真实建筑遮挡 · 异构基站波束 · 三维 CRLB 误差椭球 · 跨平台航路联动）</p>
+    <p>实景三维覆盖 · 感反电磁耦合 · 三维 CRLB 误差椭球 · 定向反制合规引导</p>
   </div>
-  <div class="header-links"><a href="overview">研究体系与可行性 →</a><a href="./">经典工作台 ↗</a></div>
+  <div class="header-links">
+    <a href="#assistant" class="assistant-jump">✦ 辅助取证问答 ↓</a>
+    <a href="modeling">感反约束建模 →</a>
+    <a href="overview">研究体系 →</a>
+    <a href="./">三维态势台 ↗</a>
+  </div>
 </header>
 <nav id="navigation" aria-label="平台功能"></nav>
 <div class="twin-layout">
 <main>
-<div class="context" id="context"></div>
-<p class="evidence-banner">统一实景数字孪生 · 支持切换真实地理建筑轮廓直接参与后端三维射线遮挡与 CRLB 计算；物理参数与量测噪声仍为合成仿真模型，外场精度须经实飞标定核验。</p>
-<p id="status" role="status">正在读取数字孪生档案…</p>
+<div class="top-meta-row">
+  <p id="status" role="status">正在读取数字孪生档案…</p>
+  <details class="inline-note"><summary>ⓘ 口径与合规边界说明</summary><div class="context" id="context"></div><p class="evidence-banner">支持真实建筑轮廓遮挡与感反电磁耦合计算；授权反制点位仅表征外部合规设施（《条例》第43条），平台仅输出感知取证与引导评估，不下发反制控制指令。</p></details>
+</div>
 
-<section class="card" id="settings">
+<section class="card compact-settings" id="settings">
   <div class="mode-tabs" id="twin-modes" role="tablist" aria-label="数字孪生应用模式">
-    <button type="button" class="mode-tab active" data-mode="counterfactual"><span>子项目三/四</span><strong>五方案反事实规划推演</strong></button>
+    <button type="button" class="mode-tab active" data-mode="counterfactual"><span>子项目三/四</span><strong>智能规划与感反推演</strong></button>
     <button type="button" class="mode-tab" data-mode="coverage"><span>子项目一</span><strong>三维覆盖与遮挡盲区场</strong></button>
     <button type="button" class="mode-tab" data-mode="precision"><span>子项目二</span><strong>干扰衰减与协同精度场</strong></button>
-    <button type="button" class="mode-tab" data-mode="flight"><span>子项目五/跨平台</span><strong>无人机航路与跨站跟踪</strong></button>
+    <button type="button" class="mode-tab" data-mode="flight"><span>子项目五/示范</span><strong>入侵跟踪与反制引导</strong></button>
   </div>
   <div class="settings-row">
-    <label>典型应用场景<select id="scene"><option value="urban">园区高密度建筑区</option><option value="corridor">物流主干道路</option><option value="electromagnetic">园区复杂电磁区</option></select></label>
-    <label>三维建筑与遮挡源<select id="building-source"><option value="synthetic">新区高密楼宇模型（25–105m）</option><option value="xiongan_gba">雄安真实建筑轮廓（GBA）</option><option value="beijing_osm">高层摩天楼真实轮廓（OSM）</option></select></label>
-    <label>新增预算（万）<input id="budget" type="number" min="1" max="500" step="1" value="50"></label>
-    <label>随机种子数<input id="seeds" type="number" min="4" max="64" step="1" value="20"></label>
-    <label>定位门限（m）<input id="precision" type="number" min="1" max="500" step="1" value="30"></label>
-    <label class="grow">归档实验<select id="history"></select></label>
+    <label>场景<select id="scene"><option value="urban">园区高密度建筑区</option><option value="corridor">物流主干道路</option><option value="electromagnetic">园区复杂电磁区</option></select></label>
+    <label>三维建筑源<select id="building-source"><option value="synthetic">新区高密楼宇模型（25–105m）</option><option value="xiongan_gba">雄安真实建筑轮廓（GBA）</option><option value="beijing_osm">高层摩天楼真实轮廓（OSM）</option></select></label>
+    <label>预算(万)<input id="budget" type="number" min="1" max="500" step="1" value="50"></label>
+    <label>种子<input id="seeds" type="number" min="4" max="64" step="1" value="20"></label>
+    <label>门限(m)<input id="precision" type="number" min="1" max="500" step="1" value="30"></label>
+    <label class="grow">实验档案<select id="history"></select></label>
+    <button id="run">重跑孪生实验</button>
+    <button id="recompute" class="secondary">复算校验</button>
   </div>
-  <div class="actions">
-    <button id="run">按当前场景与建筑源运行孪生实验</button>
-    <button id="recompute" class="secondary">从冻结输入复算核对</button>
-    <span id="repro" class="muted small"></span>
-  </div>
+  <span id="repro" class="muted small" hidden></span>
 </section>
 
-<section class="card" id="replay">
-  <div class="section-heading">
+<section class="card stage-card-3d" id="replay">
+  <div class="section-heading compact-heading">
     <h2 id="replay-heading">建筑区实景三维数字孪生沙盘与航段对照</h2>
     <span id="mode-summary-pill" class="pill">五方案反事实推演</span>
   </div>
@@ -72,18 +76,21 @@
     <div class="play"><button id="play" class="secondary">播放</button></div>
   </div>
 
-  <div class="twin3d-panel">
+  <div class="twin3d-panel" id="twin3d-panel">
     <div class="twin3d-toolbar">
       <span id="twin3d-tile-status">正在初始化 WebGL 实景三维引擎…</span>
       <div class="twin3d-buttons">
-        <label class="check-inline"><input type="checkbox" id="twin3d-imagery" checked> 卫星正射底图</label>
-        <label class="check-inline"><input type="checkbox" id="twin3d-los" checked> 实时探测波束/遮挡</label>
-        <label class="check-inline"><input type="checkbox" id="twin3d-ellipsoid" checked> 三维 CRLB 误差椭球</label>
-        <label class="check-inline"><input type="checkbox" id="twin3d-fov" checked> 传感器三维视锥</label>
-        <label class="check-inline"><input type="checkbox" id="twin3d-labels" checked> 站址铭牌</label>
-        <button type="button" class="secondary small-btn" id="twin3d-side">低空侧视</button>
-        <button type="button" class="secondary small-btn" id="twin3d-top">正射俯视</button>
-        <button type="button" class="secondary small-btn" id="twin3d-reset">全景视角</button>
+        <label class="check-inline"><input type="checkbox" id="twin3d-imagery" checked> 卫星底图</label>
+        <label class="check-inline"><input type="checkbox" id="twin3d-fov" checked> 感知视锥</label>
+        <label class="check-inline"><input type="checkbox" id="twin3d-los" checked> 实时波束/遮挡</label>
+        <label class="check-inline"><input type="checkbox" id="twin3d-ellipsoid" checked> CRLB误差椭球</label>
+        <label class="check-inline cm-pill"><input type="checkbox" id="twin3d-countermeasure" checked> 授权反制包络与引导锥</label>
+        <label class="check-inline cm-jam-pill"><input type="checkbox" id="twin3d-jamming"> ⚡ 开启反制压制推演</label>
+        <label class="check-inline"><input type="checkbox" id="twin3d-labels" checked> 铭牌</label>
+        <button type="button" class="secondary small-btn" id="twin3d-side">侧视</button>
+        <button type="button" class="secondary small-btn" id="twin3d-top">俯视</button>
+        <button type="button" class="secondary small-btn" id="twin3d-reset">全景</button>
+        <button type="button" class="secondary small-btn" id="twin3d-expand">全屏三维</button>
       </div>
     </div>
     <div class="twin3d-stage-wrap">
@@ -91,7 +98,8 @@
         <canvas id="twin3d-fallback" width="1120" height="480" hidden></canvas>
       </div>
       <div class="twin3d-hud" id="twin3d-hud"></div>
-      <div class="twin3d-inspect" id="twin3d-inspect">左键拖拽旋转 · 右键平移 · 滚轮缩放 · 点击航迹选段或点击设备/楼宇查看属性</div>
+      <div class="twin3d-cm-hud" id="twin3d-cm-hud"></div>
+      <div class="twin3d-inspect" id="twin3d-inspect">左键旋转 · 右键平移 · 滚轮缩放 · 开启「⚡反制压制推演」可直观对比单模态RF致盲与多模态抗扰连续锁定</div>
     </div>
   </div>
 
@@ -128,54 +136,48 @@
   </div>
 </section>
 
-<section class="card">
-<h2>各方案异常航段清单</h2>
+<details class="card fold-card">
+<summary>展开五类部署方案全指标对比与异常航段明细</summary>
+<h3>五类部署方案全指标对比</h3>
+<div class="table-wrap" id="deployments"></div>
+<h3 style="margin-top:16px">各方案异常航段清单</h3>
 <label class="inline">方案<select id="segment-deployment"></select></label>
 <div class="table-wrap" id="segments"></div>
-</section>
+</details>
 
-<section class="card">
-<h2>五个子项目的输入输出关系与数字孪生必要性</h2>
-<p class="muted">箭头表示上游结果是下游的输入。每张卡片的“必要性”来自同一数字孪生底座上的反事实对比：去掉该项研究考虑的因素后，把方案放回完整参考环境重新评价。</p>
+<details class="card fold-card">
+<summary>展开五个子项目输入输出关系、反事实必要性与适用边界</summary>
 <div id="chain" class="chain"></div>
 <ul id="relations" class="relations"></ul>
 <div id="point-detail" class="point-detail"></div>
-</section>
-
-<section class="card">
-<h2>五类部署方案全指标对比</h2>
-<p class="muted">理论指标来自探测概率与加权 Fisher 信息矩阵（CRLB）；模拟指标来自成对蒙特卡洛定位。</p>
-<div class="table-wrap" id="deployments"></div>
-</section>
-
-<section class="card">
-<h2>适用边界与科学诚信声明</h2>
+<h3 style="margin-top:16px">适用边界与科学诚信声明</h3>
 <ul id="limitations"></ul>
-</section>
+</details>
 </main>
 
-<aside id="assistant" aria-label="研究助手">
+<aside id="assistant" class="assistant-dock-card" aria-label="研究助手">
 <div class="assistant-head">
-<strong>研究助手</strong>
-<p id="assistant-context" class="muted small"></p>
+<div><strong>✦ 辅助研究助手（只读证据核查）</strong> <span id="assistant-context" class="muted small"></span></div>
 </div>
+<div class="assistant-compact-body">
 <div id="conversation" class="conversation"></div>
+<div class="assistant-controls">
 <div class="chips" id="chips"></div>
 <form id="ask">
-<textarea id="question" rows="3" placeholder="例如：子项目二与子项目三的必要性在本实验里得到支持了吗？" maxlength="3000"></textarea>
+<textarea id="question" rows="2" placeholder="可选提问：就当前三维选定航段核查多模态规划与抗干扰证据…" maxlength="3000"></textarea>
 <div class="ask-row">
 <label class="check"><input type="checkbox" id="review"> 同模型复核</label>
 <button type="submit" id="send" disabled>开始</button>
 <button type="button" id="stop" class="secondary" hidden>停止</button>
 </div>
 </form>
-<details id="assistant-history"><summary>本浏览器的历史提问（含其他航段）</summary><div id="runs"></div></details>
-<details><summary>设置与模型状态</summary><div id="model-status" class="small"></div>
-<p class="muted small">助手只能调用只读工具（研究体系总览、场景快照、覆盖诊断、规划记录、验算结果、孪生实验、考核指标），不能修改配置、批准任务或控制设备。</p></details>
+</div>
+</div>
+<details id="assistant-history"><summary>历史提问与模型状态</summary><div id="runs"></div><div id="model-status" class="small"></div></details>
 </aside>
 </div>
-<script type="module" src="static/twin-engine3d.js?v=20261124d"></script>
-<script src="static/twin-segment.js?v=20261124d"></script>
-<script src="static/twin.js?v=20261124d"></script>
+<script type="module" src="static/twin-engine3d.js?v=20261127a"></script>
+<script src="static/twin-segment.js?v=20261127a"></script>
+<script src="static/twin.js?v=20261127a"></script>
 </body>
 </html>

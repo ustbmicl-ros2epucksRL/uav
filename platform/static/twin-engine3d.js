@@ -131,11 +131,11 @@ function clearGroup(group) {
     }
 }
 
-function buildDroneMesh() {
+function buildDroneMesh(accentHex = 0x00d8d6, scaleVal = 2.1) {
     const root = new THREE.Group();
     const bodyMat = new THREE.MeshStandardMaterial({color: 0xf4f8fb, roughness: 0.32, metalness: 0.35});
     const armMat = new THREE.MeshStandardMaterial({color: 0x1e2c3a, roughness: 0.5, metalness: 0.45});
-    const accentMat = new THREE.MeshStandardMaterial({color: 0x00d8d6, emissive: 0x00a8a8, emissiveIntensity: 0.45});
+    const accentMat = new THREE.MeshStandardMaterial({color: accentHex, emissive: accentHex, emissiveIntensity: 0.42});
     const fuselage = new THREE.Mesh(new THREE.BoxGeometry(5.5, 1.8, 7.2), bodyMat);
     root.add(fuselage);
     const canopy = new THREE.Mesh(new THREE.SphereGeometry(2.3, 14, 10), accentMat);
@@ -167,7 +167,7 @@ function buildDroneMesh() {
     nose.rotation.x = -Math.PI / 2;
     nose.position.set(0, 0.1, -5.0);
     root.add(nose);
-    root.scale.setScalar(2.1);
+    root.scale.setScalar(scaleVal);
     root.userData.rotors = rotors;
     return root;
 }
@@ -208,13 +208,17 @@ class TwinEngine {
         this.devicesGroup = new THREE.Group();
         this.fovGroup = new THREE.Group();
         this.voxelsGroup = new THREE.Group();
+        this.counterGroup = new THREE.Group();
         this.trackGroup = new THREE.Group();
         this.losGroup = new THREE.Group();
+        this.guidanceGroup = new THREE.Group();
         this.actorGroup = new THREE.Group();
-        this.scene.add(this.gridGroup, this.buildingsGroup, this.devicesGroup, this.fovGroup, this.voxelsGroup, this.trackGroup, this.losGroup, this.actorGroup);
+        this.scene.add(this.gridGroup, this.buildingsGroup, this.devicesGroup, this.fovGroup, this.voxelsGroup, this.counterGroup, this.trackGroup, this.losGroup, this.guidanceGroup, this.actorGroup);
 
         this.facadeTex = createFacadeTexture();
-        this.drone = buildDroneMesh();
+        this.drone = buildDroneMesh(0xff6b6b, 2.15);
+        this.coopDrone = buildDroneMesh(0x2ecc71, 1.65);
+        this.coopBadge = makeLabelSprite('合作物流机(白名单)', '#2ecc71');
         this.ellipsoidMesh = new THREE.Mesh(
             new THREE.SphereGeometry(1, 20, 14),
             new THREE.MeshBasicMaterial({color: 0x2ecc71, transparent: true, opacity: 0.20, depthWrite: false})
@@ -227,8 +231,9 @@ class TwinEngine {
             new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
             new THREE.LineDashedMaterial({color: 0xffffff, dashSize: 8, gapSize: 6, transparent: true, opacity: 0.65})
         );
-        this.actorGroup.add(this.drone, this.ellipsoidMesh, this.ellipsoidWire, this.dropLine);
+        this.actorGroup.add(this.drone, this.coopDrone, this.coopBadge, this.ellipsoidMesh, this.ellipsoidWire, this.dropLine);
         this.actorGroup.visible = false;
+        this.counterSignature = '';
 
         this.anchorKey = '';
         this.imagery = null;
@@ -251,8 +256,11 @@ class TwinEngine {
         this.renderer.setAnimationLoop(() => {
             if (!host.clientWidth || !host.clientHeight) return;
             this.controls.update();
-            if (this.actorGroup.visible && this.drone.userData.rotors) {
-                for (const r of this.drone.userData.rotors) r.rotation.y += 0.45;
+            if (this.actorGroup.visible) {
+                for (const r of this.drone.userData.rotors || []) r.rotation.y += 0.45;
+                if (this.coopDrone.visible) {
+                    for (const r of this.coopDrone.userData.rotors || []) r.rotation.y += 0.42;
+                }
             }
             this.renderer.render(this.scene, this.camera);
         });
@@ -631,6 +639,91 @@ class TwinEngine {
         clearGroup(this.voxelsGroup);
     }
 
+    _rebuildCountermeasures(cmSites, showCountermeasure, jammingActive, showLabels) {
+        clearGroup(this.counterGroup);
+        if (showCountermeasure === false || !Array.isArray(cmSites) || !cmSites.length) return;
+        const coneHex = jammingActive ? 0xff4d4d : 0xf39c12;
+        const coneOpacity = jammingActive ? 0.26 : 0.14;
+        for (const cm of cmSites) {
+            const root = new THREE.Group();
+            root.position.copy(world(cm.x, cm.y, 0));
+            const mast = new THREE.Mesh(
+                new THREE.CylinderGeometry(1.2, 2.5, cm.z, 8),
+                new THREE.MeshStandardMaterial({color: 0x3d2428, roughness: 0.45, metalness: 0.6})
+            );
+            mast.position.y = cm.z / 2;
+            mast.userData.inspectText = `${cm.name} · 挂高 ${cm.z} m · 压制扇区 ${cm.fov}° / ${cm.range} m · ${cm.authority || '法定授权点位'}`;
+            root.add(mast);
+
+            const panel = new THREE.Mesh(
+                new THREE.ConeGeometry(8.5, 16, 6),
+                new THREE.MeshStandardMaterial({
+                    color: coneHex, emissive: coneHex, emissiveIntensity: jammingActive ? 0.65 : 0.25, roughness: 0.35
+                })
+            );
+            panel.rotation.x = Math.PI / 2;
+            panel.rotation.z = -(cm.azimuth || 45) * Math.PI / 180;
+            panel.position.y = cm.z + 4;
+            panel.userData.inspectText = mast.userData.inspectText;
+            root.add(panel);
+
+            if (showLabels !== false) {
+                const badge = makeLabelSprite(
+                    `${jammingActive ? '⚡ 压制开启 · ' : '⚡ '}${cm.name}`,
+                    jammingActive ? '#ff6b6b' : '#f5b041'
+                );
+                badge.position.set(0, cm.z + 20, 0);
+                root.add(badge);
+            }
+            this.counterGroup.add(root);
+
+            // Green EMC RF-blocking safety isolation ring (180m)
+            const isoR = cm.rf_isolation_m || 180;
+            const ringPts = [];
+            for (let i = 0; i <= 64; i++) {
+                const a = (i / 64) * Math.PI * 2;
+                ringPts.push(world(cm.x + Math.sin(a) * isoR, cm.y + Math.cos(a) * isoR, 2.2));
+            }
+            const isoLine = new THREE.Line(
+                new THREE.BufferGeometry().setFromPoints(ringPts),
+                new THREE.LineDashedMaterial({color: 0x2ecc71, dashSize: 16, gapSize: 10, transparent: true, opacity: 0.88})
+            );
+            isoLine.computeLineDistances();
+            isoLine.raycast = () => {};
+            this.counterGroup.add(isoLine);
+
+            // Translucent 3D directional suppression envelope sector
+            const steps = 16, fov = cm.fov || 85, reach = cm.range || 540;
+            const startDeg = (cm.azimuth || 45) - fov / 2;
+            const orig = world(cm.x, cm.y, cm.z);
+            const verts = [], outlinePts = [orig];
+            for (let k = 0; k <= steps; k++) {
+                const a1 = (startDeg + (fov * k) / steps) * Math.PI / 180;
+                outlinePts.push(world(cm.x + Math.sin(a1) * reach, cm.y + Math.cos(a1) * reach, 155));
+                if (k < steps) {
+                    const a2 = (startDeg + (fov * (k + 1)) / steps) * Math.PI / 180;
+                    const p1 = world(cm.x + Math.sin(a1) * reach, cm.y + Math.cos(a1) * reach, 155);
+                    const p2 = world(cm.x + Math.sin(a2) * reach, cm.y + Math.cos(a2) * reach, 155);
+                    verts.push(orig.x, orig.y, orig.z, p1.x, p1.y, p1.z, p2.x, p2.y, p2.z);
+                }
+            }
+            outlinePts.push(orig);
+            const fanGeom = new THREE.BufferGeometry();
+            fanGeom.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+            const fan = new THREE.Mesh(
+                fanGeom,
+                new THREE.MeshBasicMaterial({color: coneHex, transparent: true, opacity: coneOpacity, side: THREE.DoubleSide, depthWrite: false})
+            );
+            fan.raycast = () => {};
+            const fanBorder = new THREE.Line(
+                new THREE.BufferGeometry().setFromPoints(outlinePts),
+                new THREE.LineBasicMaterial({color: coneHex, transparent: true, opacity: 0.82})
+            );
+            fanBorder.raycast = () => {};
+            this.counterGroup.add(fan, fanBorder);
+        }
+    }
+
     update(payload) {
         this.currentState = payload;
         this._ensureSatelliteImagery(payload.anchor, payload.showImagery);
@@ -651,6 +744,12 @@ class TwinEngine {
             this._rebuildDevices(payload.devices || [], payload.addedIds || [], payload.showFov, payload.showLabels);
         }
 
+        const cmSig = JSON.stringify([payload.countermeasureSites, payload.showCountermeasure, payload.jammingActive, payload.showLabels]);
+        if (cmSig !== this.counterSignature) {
+            this.counterSignature = cmSig;
+            this._rebuildCountermeasures(payload.countermeasureSites || [], payload.showCountermeasure, payload.jammingActive, payload.showLabels);
+        }
+
         const trkSig = JSON.stringify([
             payload.points?.length, payload.points?.[0], payload.points?.at?.(-1),
             payload.timeline?.map(s => s.state).join(''), payload.segmentRange,
@@ -661,6 +760,7 @@ class TwinEngine {
         }
 
         clearGroup(this.losGroup);
+        clearGroup(this.guidanceGroup);
         if (!Array.isArray(payload.points) || !payload.points.length) {
             this.actorGroup.visible = false;
             return;
@@ -676,6 +776,20 @@ class TwinEngine {
         this.drone.position.copy(uavPos);
         this.drone.rotation.set(0, -heading, 0);
 
+        // Cooperative whitelist UAV on corridor path for airspace deconfliction visualization
+        if (payload.coopPoint && payload.showCountermeasure !== false) {
+            const [cx, cy, cz, cHeading] = payload.coopPoint;
+            const cWorld = world(cx, cy, cz);
+            this.coopDrone.visible = true;
+            this.coopDrone.position.copy(cWorld);
+            this.coopDrone.rotation.set(0, -(cHeading || 0), 0);
+            this.coopBadge.visible = payload.showLabels !== false;
+            this.coopBadge.position.copy(cWorld).add(new THREE.Vector3(0, 22, 0));
+        } else {
+            this.coopDrone.visible = false;
+            this.coopBadge.visible = false;
+        }
+
         this.dropLine.geometry.setFromPoints([world(tx, ty, 0.5), uavPos]);
         this.dropLine.computeLineDistances();
 
@@ -685,13 +799,17 @@ class TwinEngine {
         this.ellipsoidMesh.visible = showEllipsoid;
         this.ellipsoidWire.visible = showEllipsoid;
         if (showEllipsoid) {
-            const stHex = STATE_HEX[sample.state] || 0x2ecc71;
+            const effState = payload.effectiveState || sample.state;
+            const stHex = STATE_HEX[effState] || 0x2ecc71;
             this.ellipsoidMesh.material.color.setHex(stHex);
             this.ellipsoidWire.material.color.setHex(stHex);
             this.ellipsoidMesh.position.copy(uavPos);
             this.ellipsoidWire.position.copy(uavPos);
             let rx = 26, ry = 18, rz = 26;
-            if (Array.isArray(ellipsoidAxes) && ellipsoidAxes.length === 3) {
+            if (payload.jammingDegraded) {
+                rx = rz = 66;
+                ry = 46;
+            } else if (Array.isArray(ellipsoidAxes) && ellipsoidAxes.length === 3) {
                 rx = Math.max(8, Math.min(75, ellipsoidAxes[1]));
                 ry = Math.max(8, Math.min(60, ellipsoidAxes[0]));
                 rz = Math.max(8, Math.min(75, ellipsoidAxes[2]));
@@ -711,11 +829,22 @@ class TwinEngine {
             for (const d of payload.devices || []) {
                 if (d.status === 'offline' || !inSensorFov(d, tx, ty, tz)) continue;
                 const sPos = world(d.x, d.y, d.z);
+                if (payload.jammingActive && (d.type === 'RF' || d.type === 'ADSB')) {
+                    const mutedLine = new THREE.Line(
+                        new THREE.BufferGeometry().setFromPoints([sPos, uavPos]),
+                        new THREE.LineDashedMaterial({color: 0x9b59b6, dashSize: 8, gapSize: 10, transparent: true, opacity: 0.42})
+                    );
+                    mutedLine.computeLineDistances();
+                    mutedLine.raycast = () => {};
+                    this.losGroup.add(mutedLine);
+                    continue;
+                }
                 const hit = rayOccluded(d.x, d.y, d.z, tx, ty, tz, payload.buildings || []);
                 if (!hit) {
+                    const beamHex = d.type === 'EO' || d.type === 'IR' ? 0xf5b041 : (d.type === 'RF' ? 0xc58af9 : 0x3bf5b5);
                     const beam = new THREE.Mesh(
-                        new THREE.TubeGeometry(new THREE.LineCurve3(sPos, uavPos), 1, 1.35, 6, false),
-                        new THREE.MeshBasicMaterial({color: 0x3bf5b5, transparent: true, opacity: 0.78})
+                        new THREE.TubeGeometry(new THREE.LineCurve3(sPos, uavPos), 1, 1.45, 6, false),
+                        new THREE.MeshBasicMaterial({color: beamHex, transparent: true, opacity: 0.82})
                     );
                     beam.raycast = () => {};
                     this.losGroup.add(beam);
@@ -734,6 +863,41 @@ class TwinEngine {
                     marker.position.copy(hPos);
                     marker.raycast = () => {};
                     this.losGroup.add(blockedLine, marker);
+                }
+            }
+        }
+
+        // 3D Primitive 3: Narrow directional countermeasure guidance cone & cooperative airspace deconfliction
+        if (payload.showCountermeasure !== false && payload.guidance?.station) {
+            const g = payload.guidance;
+            const cmPos = world(g.station.x, g.station.y, g.station.z);
+            const gHex = g.conflict ? 0xf1c40f : (g.ready ? 0x00e5ff : 0xe67e22);
+            const dist = cmPos.distanceTo(uavPos);
+            if (dist > 5 && (g.ready || g.conflict)) {
+                const guideLine = new THREE.Line(
+                    new THREE.BufferGeometry().setFromPoints([cmPos, uavPos]),
+                    new THREE.LineDashedMaterial({color: gHex, dashSize: 14, gapSize: 7, transparent: true, opacity: 0.95})
+                );
+                guideLine.computeLineDistances();
+                guideLine.raycast = () => {};
+                const mid = cmPos.clone().lerp(uavPos, 0.5);
+                const cone = new THREE.Mesh(
+                    new THREE.ConeGeometry(Math.min(28, dist * 0.048), dist, 14, 1, true),
+                    new THREE.MeshBasicMaterial({color: gHex, transparent: true, opacity: g.conflict ? 0.22 : 0.18, side: THREE.DoubleSide, depthWrite: false})
+                );
+                cone.position.copy(mid);
+                cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), cmPos.clone().sub(uavPos).normalize());
+                cone.raycast = () => {};
+                this.guidanceGroup.add(guideLine, cone);
+                if (payload.showLabels !== false) {
+                    const tag = makeLabelSprite(
+                        g.conflict
+                            ? `⚠ 扇区含合作机 · 暂缓压制 · 光电持续取证`
+                            : `⚡ 合规引导就绪 · 方位 ${g.azimuth}° / 俯仰 ${g.elevation}°`,
+                        g.conflict ? '#f1c40f' : '#00e5ff'
+                    );
+                    tag.position.copy(uavPos).add(new THREE.Vector3(0, 26, 0));
+                    this.guidanceGroup.add(tag);
                 }
             }
         }

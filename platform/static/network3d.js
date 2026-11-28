@@ -10,7 +10,7 @@ const camera=new THREE.PerspectiveCamera(45,1,2,40000),renderer=new THREE.WebGLR
 const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.minPolarAngle=.12;controls.maxPolarAngle=Math.PI*.36;controls.minDistance=350;controls.maxDistance=4500;controls.enablePan=true;
 scene.add(new THREE.HemisphereLight(0xd4eeff,0x364b60,.7));const light=new THREE.DirectionalLight(0xffffff,1.25);light.position.set(-900,420,280);scene.add(light);
 const flatGround=groundBase(60000,0xc5d0c4);scene.add(flatGround);
-const buildings=new THREE.Group(),devices=new THREE.Group(),cells=new THREE.Group(),proposal=new THREE.Group(),routeGroup=new THREE.Group();scene.add(buildings,devices,cells,proposal,routeGroup);
+const buildings=new THREE.Group(),devices=new THREE.Group(),cells=new THREE.Group(),proposal=new THREE.Group(),routeGroup=new THREE.Group(),counterGroup=new THREE.Group();scene.add(buildings,devices,cells,proposal,routeGroup,counterGroup);
 let shared=null,sceneKey=null,coverageKey=null,planKey=null,routeKey=null,picks=[],isVisible=false;
 const LON0=115.95,LAT0=39,EARTH=6378137;
 
@@ -58,18 +58,42 @@ function markers(items,group,color,proposed=false){
   else if(d.type==='ADSB'){put(new THREE.Mesh(new THREE.CylinderGeometry(.18,.18,9,6),paint)).position.y=4.6;put(new THREE.Mesh(new THREE.SphereGeometry(.7,10,8),paint)).position.y=9.2;}
   else{put(new THREE.Mesh(new THREE.BoxGeometry(2.6,1.5,1.7),shell)).position.y=1.8;for(const side of [-1.2,1.2]){const ant=put(new THREE.Mesh(new THREE.CylinderGeometry(.12,.12,6,6),paint));ant.position.set(side,4.2,0);}}
   if($('network3d-ranges').checked&&d.status!=='offline'){
-   const angle=Math.min(d.fov||360,360),radius=d.range||0,pts=[];
+   const angle=Math.min(d.fov||360,360),radius=Math.min(d.range||0,520),pts=[];
    if(angle<360)pts.push(world(d.x,d.y,gnd+4));
-   for(let i=0;i<=96;i++){const a=((d.azimuth||0)-angle/2+angle*i/96)*Math.PI/180;pts.push(world(d.x+radius*Math.sin(a),d.y+radius*Math.cos(a),groundHeight(d.x+radius*Math.sin(a),d.y+radius*Math.cos(a))+4));}
+   for(let i=0;i<=64;i++){const a=((d.azimuth||0)-angle/2+angle*i/64)*Math.PI/180;pts.push(world(d.x+(d.range||0)*Math.sin(a),d.y+(d.range||0)*Math.cos(a),groundHeight(d.x+(d.range||0)*Math.sin(a),d.y+(d.range||0)*Math.cos(a))+4));}
    if(angle<360)pts.push(world(d.x,d.y,gnd+4));
-   const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),new THREE.LineBasicMaterial({color:tint,transparent:true,opacity:.7}));line.raycast=ignoreRaycast;group.add(line);
+   const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),new THREE.LineBasicMaterial({color:tint,transparent:true,opacity:.72}));line.raycast=ignoreRaycast;group.add(line);
+   const steps=Math.max(12,Math.round(angle/12)),verts=[],orig=world(d.x,d.y,alt);
+   for(let k=0;k<steps;k++){const a1=((d.azimuth||0)-angle/2+angle*k/steps)*Math.PI/180,a2=((d.azimuth||0)-angle/2+angle*(k+1)/steps)*Math.PI/180;const p1=world(d.x+Math.sin(a1)*radius,d.y+Math.cos(a1)*radius,Math.max(25,alt*.55)),p2=world(d.x+Math.sin(a2)*radius,d.y+Math.cos(a2)*radius,Math.max(25,alt*.55));verts.push(orig.x,orig.y,orig.z,p1.x,p1.y,p1.z,p2.x,p2.y,p2.z);}
+   const fg=new THREE.BufferGeometry();fg.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));const fan=new THREE.Mesh(fg,new THREE.MeshBasicMaterial({color:tint,transparent:true,opacity:.12,side:THREE.DoubleSide,depthWrite:false}));fan.raycast=ignoreRaycast;group.add(fan);
   }
   const pinCanvas=document.createElement('canvas');pinCanvas.width=64;pinCanvas.height=64;const ctx=pinCanvas.getContext('2d');ctx.beginPath();ctx.arc(32,32,21,0,Math.PI*2);ctx.fillStyle='#'+new THREE.Color(tint).getHexString();ctx.fill();ctx.lineWidth=5;ctx.strokeStyle='#fff';ctx.stroke();const pin=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(pinCanvas),sizeAttenuation:false,depthTest:false}));pin.position.set(0,alt,0);pin.scale.set(.025,.025,1);pin.userData=picked;root.add(pin);
   if($('network3d-labels').checked){const label=placeLabel(d.name||d.id,new THREE.Vector3());label.position.set(0,alt+14,0);root.add(label);head.userData.label=label;head.userData.alt=alt;}
  }
 }
 function zoneVolume(){if(!$('network3d-buildings').checked&&$('network3d-layer').value==='none')return;const z=shared.scene.zone,z0=z.z0??0,z1=z.z1??300,corners=[[z.x0,z.y0],[z.x1,z.y0],[z.x1,z.y1],[z.x0,z.y1]];const ring=height=>new THREE.Line(new THREE.BufferGeometry().setFromPoints([...corners,corners[0]].map(p=>world(p[0],p[1],height))),new THREE.LineBasicMaterial({color:0xe07a3a}));buildings.add(ring(z0+2),ring(z1));for(const [x,y] of corners)buildings.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([world(x,y,z0),world(x,y,z1)]),new THREE.LineBasicMaterial({color:0xe07a3a,transparent:true,opacity:.75})));}
-function model(){clear(buildings);if($('network3d-buildings').checked)shared.scene.buildings.forEach((b,i)=>{const h=Math.max(b.h,4),t=Math.min(1,(h-25)/80),g=new THREE.BoxGeometry(b.w,h,b.d),mesh=new THREE.Mesh(g,new THREE.MeshStandardMaterial({color:new THREE.Color().setHSL(.58-t*.05,.1+t*.16,.9-t*.38),roughness:.62,metalness:.04}));mesh.position.copy(world(b.x+b.w/2,b.y+b.d/2,groundHeight(b.x+b.w/2,b.y+b.d/2)+h/2));mesh.userData={building:i};buildings.add(mesh);const edges=new THREE.LineSegments(new THREE.EdgesGeometry(g),new THREE.LineBasicMaterial({color:0x1e3344,transparent:true,opacity:.55}));edges.position.copy(mesh.position);edges.raycast=ignoreRaycast;buildings.add(edges);});markers(shared.scene.devices,devices,0x45d4ed);zoneVolume();}
+function buildCountermeasureOverlay(){
+ clear(counterGroup);
+ if($('network3d-countermeasure')&&!$('network3d-countermeasure').checked)return;
+ const stations=[{name:'授权反制点位(受控)',x:680,y:680,z:48,az:45,fov:85,reach:560,iso:180}];
+ if(shared?.scene?.id==='electromagnetic')stations.push({name:'东北受控压制站',x:1250,y:1180,z:52,az:225,fov:80,reach:520,iso:180});
+ for(const cm of stations){
+  const root=new THREE.Group();root.position.copy(world(cm.x,cm.y,0));
+  const mast=new THREE.Mesh(new THREE.CylinderGeometry(1.1,2.2,cm.z,8),new THREE.MeshStandardMaterial({color:0x4a2525,roughness:.45,metalness:.55}));mast.position.y=cm.z/2;mast.raycast=ignoreRaycast;root.add(mast);
+  const emitter=new THREE.Mesh(new THREE.ConeGeometry(7,14,6),new THREE.MeshStandardMaterial({color:0xe67e22,emissive:0xc0392b,emissiveIntensity:.35}));emitter.rotation.x=Math.PI/2;emitter.rotation.z=-cm.az*Math.PI/180;emitter.position.y=cm.z+3;emitter.raycast=ignoreRaycast;root.add(emitter);
+  if($('network3d-labels').checked){const lbl=placeLabel('⚡ '+cm.name,new THREE.Vector3(0,cm.z+18,0));root.add(lbl);}
+  counterGroup.add(root);
+  const isoPts=[];for(let i=0;i<=64;i++){const a=i/64*Math.PI*2;isoPts.push(world(cm.x+Math.sin(a)*cm.iso,cm.y+Math.cos(a)*cm.iso,3));}
+  const isoRing=new THREE.Line(new THREE.BufferGeometry().setFromPoints(isoPts),new THREE.LineDashedMaterial({color:0x2ecc71,dashSize:16,gapSize:10,transparent:true,opacity:.9}));isoRing.computeLineDistances();isoRing.raycast=ignoreRaycast;counterGroup.add(isoRing);
+  const steps=16,verts=[],edgePts=[world(cm.x,cm.y,cm.z)],orig=world(cm.x,cm.y,cm.z);
+  for(let k=0;k<=steps;k++){const a=(cm.az-cm.fov/2+cm.fov*k/steps)*Math.PI/180;edgePts.push(world(cm.x+Math.sin(a)*cm.reach,cm.y+Math.cos(a)*cm.reach,145));if(k<steps){const a2=(cm.az-cm.fov/2+cm.fov*(k+1)/steps)*Math.PI/180;const p1=world(cm.x+Math.sin(a)*cm.reach,cm.y+Math.cos(a)*cm.reach,145),p2=world(cm.x+Math.sin(a2)*cm.reach,cm.y+Math.cos(a2)*cm.reach,145);verts.push(orig.x,orig.y,orig.z,p1.x,p1.y,p1.z,p2.x,p2.y,p2.z);}}
+  edgePts.push(orig);
+  const coneGeom=new THREE.BufferGeometry();coneGeom.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
+  const cone=new THREE.Mesh(coneGeom,new THREE.MeshBasicMaterial({color:0xe67e22,transparent:true,opacity:.18,side:THREE.DoubleSide,depthWrite:false}));cone.raycast=ignoreRaycast;counterGroup.add(cone);
+  const outline=new THREE.Line(new THREE.BufferGeometry().setFromPoints(edgePts),new THREE.LineBasicMaterial({color:0xff9f43,transparent:true,opacity:.82}));outline.raycast=ignoreRaycast;counterGroup.add(outline);
+ }
+}
+function model(){clear(buildings);if($('network3d-buildings').checked)shared.scene.buildings.forEach((b,i)=>{const h=Math.max(b.h,4),t=Math.min(1,(h-25)/80),g=new THREE.BoxGeometry(b.w,h,b.d),mesh=new THREE.Mesh(g,new THREE.MeshStandardMaterial({color:new THREE.Color().setHSL(.58-t*.05,.1+t*.16,.9-t*.38),roughness:.62,metalness:.04}));mesh.position.copy(world(b.x+b.w/2,b.y+b.d/2,groundHeight(b.x+b.w/2,b.y+b.d/2)+h/2));mesh.userData={building:i};buildings.add(mesh);const edges=new THREE.LineSegments(new THREE.EdgesGeometry(g),new THREE.LineBasicMaterial({color:0x1e3344,transparent:true,opacity:.55}));edges.position.copy(mesh.position);edges.raycast=ignoreRaycast;buildings.add(edges);});markers(shared.scene.devices,devices,0x45d4ed);zoneVolume();buildCountermeasureOverlay();}
 function coverage(){clear(cells);picks=[];const c=shared.coverage;if(!c)return;const mode=$('network3d-layer').value,delta=shared.coverageMode==='delta';if(mode==='none')return;const points=[];c.layers.forEach((layer,k)=>{const z=k*50+25;if(mode==='slice'&&Math.floor(shared.altitude/50)!==k)return;layer.forEach((row,i)=>row.forEach((n,j)=>{if(n<0||delta&&n===0||!delta&&mode==='blind'&&n!==0||!delta&&mode==='overlap'&&n<2)return;points.push({x:i*50+25,y:j*50+25,z,n});}));});
 const mesh=new THREE.InstancedMesh(new THREE.BoxGeometry(mode==='slice'?46:16,mode==='slice'?1:10,mode==='slice'?46:16),new THREE.MeshBasicMaterial({transparent:true,opacity:Number($('network3d-opacity').value)/100,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}),points.length);const matrix=new THREE.Matrix4();points.forEach((p,i)=>{matrix.setPosition(world(p.x,p.y,p.z));mesh.setMatrixAt(i,matrix);mesh.setColorAt(i,new THREE.Color(delta?(p.n===1?0x67bc94:p.n===2?0x368fd1:0xe66a5b):(p.n===0?0xe66a5b:p.n===1?0x67bc94:0x368fd1)));});mesh.userData={coverage:true};cells.add(mesh);picks=points;}
 function routePreview(){clear(routeGroup);const r=shared.route;if(!r)return;markers(r.selected,routeGroup,0xffae51,true);const points=r.samples.map(p=>world(p.x,p.y,p.z));const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(points),new THREE.LineBasicMaterial({color:0xffcc71}));routeGroup.add(line);const p=r.samples[shared.routeStep||0];const target=new THREE.Mesh(new THREE.SphereGeometry(20,16,8),new THREE.MeshBasicMaterial({color:p.in_air?0xffffff:0xff6655}));target.position.copy(world(p.x,p.y,p.z));routeGroup.add(target);for(const id of p.sensor_ids||[]){const d=r.sites.find(s=>s.id===id);if(!d)continue;routeGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([world(d.x,d.y,d.z),world(p.x,p.y,p.z)]),new THREE.LineBasicMaterial({color:0x70e0ca,transparent:true,opacity:.7})));}}
@@ -88,7 +112,7 @@ $('network3d-top').onclick=()=>{camera.position.set(0,1700,8);controls.target.se
 const altitudeLabel=$('altitude').parentElement,altitudeHome=altitudeLabel.parentElement;
 $('network3d-expand').onclick=()=>{const panel=$('network3d-panel');panel.classList.toggle('map-expanded');(panel.classList.contains('map-expanded')?panel.querySelector('.map-toolbar'):altitudeHome).appendChild(altitudeLabel);$('network3d-expand').textContent=panel.classList.contains('map-expanded')?'退出大图':'展开地图';};
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){$('network3d-panel').classList.remove('map-expanded');altitudeHome.appendChild(altitudeLabel);$('network3d-expand').textContent='展开地图';}});
-for(const id of ['network3d-buildings','network3d-labels','network3d-ranges'])$(id).onchange=()=>{if(shared){model();markers(shared.plan?.selected||[],proposal,0xffae51,true);routePreview();}};
+for(const id of ['network3d-buildings','network3d-labels','network3d-ranges','network3d-countermeasure']){const el=$(id);if(el)el.onchange=()=>{if(shared){model();markers(shared.plan?.selected||[],proposal,0xffae51,true);routePreview();}};}
 $('network3d-opacity').oninput=()=>{if(shared)coverage();};
 const probe=new THREE.Vector3();renderer.setAnimationLoop(()=>{if(!isVisible||!host.clientWidth)return;controls.update();controls.target.x=Math.max(-1400,Math.min(1400,controls.target.x));controls.target.z=Math.max(-1400,Math.min(1400,controls.target.z));controls.target.y=Math.max(0,Math.min(220,controls.target.y));const n=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion.clone().invert());compass.querySelector('i').style.transform=`rotate(${Math.atan2(n.x,n.y)*180/Math.PI}deg)`;renderer.render(scene,camera);});home();
 loadTerrain().catch(error=>{if($('network3d-detail'))$('network3d-detail').textContent='地图影像暂未载入，仍显示局部坐标中的设备高度。'+error.message;});

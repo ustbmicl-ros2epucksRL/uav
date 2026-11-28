@@ -11,6 +11,7 @@ const pct2 = v => v == null ? '—' : (v * 100).toFixed(2) + '%';
 
 const NAV_ITEMS = {
     overview: '研究总览',
+    modeling: '标准约束建模',
     tasks: '规划任务',
     resources: '资源配置',
     diagnosis: '感知诊断',

@@ -19,6 +19,7 @@ from .learning import router as learning_router
 from .acceptance_api import router as acceptance_router
 from .twin_api import router as twin_router
 from .research_overview import router as research_overview_router
+from .standard_modeling import router as standard_modeling_router
 from .jobs import manager
 from .observability import install_observability
 
@@ -38,7 +39,7 @@ app.mount('/static', StaticFiles(directory=store.ROOT / 'static'), name='static'
 for router in (core_router, engineering_router, tiles_router, planning_portal_router,
                demonstration_router, research_analysis_router, research_agent_router,
                baseline_comparison_router, jobs_router, learning_router, cabinet_router,
-               acceptance_router, twin_router, research_overview_router):
+               acceptance_router, twin_router, research_overview_router, standard_modeling_router):
     app.include_router(router)
 install_observability(app)
 

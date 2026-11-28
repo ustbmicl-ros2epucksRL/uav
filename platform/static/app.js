@@ -1,6 +1,25 @@
 'use strict';
 const $=id=>document.getElementById(id);
-const state={sceneId:'urban',scene:null,coverage:null,run:null,time:0,selected:null,plan:null,comparison:null,planCoverage:null,route:null,routeStep:0,tab:'risk',playing:false,imported:false,loadVersion:0};
+const state={sceneId:'urban',scene:null,coverage:null,run:null,time:0,selected:null,plan:null,comparison:null,planCoverage:null,route:null,routeStep:0,tab:'diagnosis',playing:false,imported:false,loadVersion:0};
+const CM_STATION={id:'CM-AUTH-01',name:'重点区西南授权定向反制站',x:680,y:680,z:48,azimuth:45,fov:85,range:560,rf_isolation_m:180};
+function evaluateCountermeasureReadiness(track,frameTracks){
+ if(!track||!state.scene)return null;
+ const entry=state.scene.registry?.[track.cooperative_id];
+ const nonCoop=!entry||entry.status!=='approved';
+ const multimodal=(track.sources?.length||0)>=2;
+ const precise=Boolean(track.observed)&&Number(track.uncertainty_m)<=35;
+ const dx=track.position[0]-CM_STATION.x,dy=track.position[1]-CM_STATION.y,dz=track.position[2]-CM_STATION.z;
+ const az=((Math.atan2(dx,dy)*180/Math.PI)+360)%360,el=Math.atan2(dz,Math.max(1,Math.hypot(dx,dy)))*180/Math.PI;
+ const clearAirspace=!(frameTracks||[]).some(other=>{
+  if(other.id===track.id)return false;
+  const oe=state.scene.registry?.[other.cooperative_id];
+  if(!oe||oe.status!=='approved')return false;
+  const oAz=((Math.atan2(other.position[0]-CM_STATION.x,other.position[1]-CM_STATION.y)*180/Math.PI)+360)%360;
+  return Math.abs(((oAz-az+540)%360)-180)<=18;
+ });
+ const ready=nonCoop&&multimodal&&precise&&clearAirspace;
+ return {ready,nonCoop,multimodal,precise,clearAirspace,azimuth:Number(az.toFixed(1)),elevation:Number(el.toFixed(1))};
+}
 const names={RADAR:'雷达',RF:'无线电',EO:'光电',IR:'红外',ADSB:'合作报文'};
 const statuses={pending:'待核验',acknowledged:'已确认待处理',resolved:'已闭环',false_alarm:'误报'};
 const escape=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -31,13 +50,14 @@ function render(){if(!state.scene||!state.run)return;const pc=state.planCoverage
  syncNetwork3D();
 }
 function renderEvents(events){const filter=$('event-filter').value;const list=events.filter(e=>filter==='all'||e.status===filter).sort((a,b)=>b.time-a.time);$('events').innerHTML=list.length?list.map(e=>`<button class="event" data-event="${escape(e.id)}"><span class="level ${e.level==='高'?'high':''}">${escape(e.level)}风险 · ${number(e.time)} s</span><b>${escape(e.title)}</b><span>${escape(e.track_id)} · ${escape(statuses[e.status])}</span></button>`).join(''):'<div class="empty">当前筛选条件下暂无事件</div>';}
-function renderDetail(){const t=currentFrame()?.tracks.find(t=>t.id===state.selected);if(!t){$('track-detail').textContent='选择一个航迹，查看身份状态、来源设备、位置和估计不确定度。';return;}const entry=state.scene.registry[t.cooperative_id];$('track-detail').innerHTML=`<strong>${escape(t.id)}</strong>　${t.observed?'量测更新':'预测滑行'}<br>位置 (${t.position.map(number).join(', ')}) m　速度 ${number(Math.hypot(...t.velocity))} m/s<br>来源 ${escape(t.sources.join('、')||'当前无量测')}　估计不确定度 ${number(t.uncertainty_m)} m（模型值）<br>合作识别码 ${escape(t.cooperative_id||'未获取')}　登记状态 ${entry?escape({approved:'演示任务已登记',denied:'登记不允许',unknown:'待核验'}[entry.status]):'待核验'}`;}
+function renderDetail(){const f=currentFrame(),t=f?.tracks.find(t=>t.id===state.selected);if(!t){$('track-detail').textContent='选择一个航迹，查看身份状态、来源设备、位置和估计不确定度。';return;}const entry=state.scene.registry[t.cooperative_id];const cm=evaluateCountermeasureReadiness(t,f?.tracks);const cmHtml=cm?`<br><span class="cm-badge ${cm.ready?'ok':'warn'}">${cm.ready?'合规反制引导就绪':'暂不满足反制引导门限'}</span>定向参数：方位 ${cm.azimuth}° / 俯仰 ${cm.elevation}° · 四判据：[身份排他:${cm.nonCoop?'✔':'✘白名单'} | ≥2模态复核:${cm.multimodal?'✔':'✘'} | 误差≤35m:${cm.precise?'✔':'✘'} | 扇区净空:${cm.clearAirspace?'✔无合作机':'⚠含合作机避让'}]`:'';$('track-detail').innerHTML=`<strong>${escape(t.id)}</strong>　${t.observed?'量测更新':'预测滑行'}<br>位置 (${t.position.map(number).join(', ')}) m　速度 ${number(Math.hypot(...t.velocity))} m/s<br>来源 ${escape(t.sources.join('、')||'当前无量测')}　估计不确定度 ${number(t.uncertainty_m)} m（模型值）<br>合作识别码 ${escape(t.cooperative_id||'未获取')}　登记状态 ${entry?escape({approved:'演示任务已登记',denied:'登记不允许',unknown:'待核验'}[entry.status]):'待核验'}${cmHtml}`;}
 function transform(canvas){const box=canvas.getBoundingClientRect(),dpr=window.devicePixelRatio||1;canvas.width=box.width*dpr;canvas.height=box.height*dpr;const ctx=canvas.getContext('2d');ctx.scale(dpr,dpr);const pad=32,size=Math.min(box.width-2*pad,box.height-2*pad),left=(box.width-size)/2,top=(box.height-size)/2;return {ctx,size,left,top,x:v=>left+v/2000*size,y:v=>top+size-v/2000*size};}
 const palette=['#147bb8','#ae6831','#6d69b5','#309079','#c45e6c'];
 function drawMap(id,diagnosis){const canvas=$(id);if(!canvas.offsetWidth)return;const {ctx:c,size,left,top,x,y}=transform(canvas);c.fillStyle='#f7f9fb';c.fillRect(0,0,canvas.width,canvas.height);c.strokeStyle='#dfe7ed';c.lineWidth=1;for(let v=0;v<=2000;v+=500){c.beginPath();c.moveTo(x(v),y(0));c.lineTo(x(v),y(2000));c.moveTo(x(0),y(v));c.lineTo(x(2000),y(v));c.stroke();c.fillStyle='#8292a0';c.font='11px sans-serif';c.fillText(String(v),x(v)-12,top+size+19);}
  const showCoverage=diagnosis||$('show-coverage').checked;if(showCoverage){const k=Math.floor(Number($('altitude').value)/50),layer=(diagnosis?displayCoverage():state.coverage).layers[k];for(let i=0;i<40;i++)for(let j=0;j<40;j++){const v=layer[i][j];c.fillStyle=diagnosis&&$('coverage-config').value==='delta'&&state.planCoverage?(v<0?'#bbc7d144':v===0?'#bbc7d122':v===1?'#6eac9499':v===2?'#3988b3bb':'#d16f65aa'):(v<0?'#bbc7d144':v===0?'#d16f6555':v===1?'#6eac9477':'#3988b3aa');c.fillRect(x(i*50),y((j+1)*50),size/40+0.2,size/40+0.2);}}
  for(const b of state.scene.buildings){c.fillStyle='#bbc6cf';c.fillRect(x(b.x),y(b.y+b.d),b.w/2000*size,b.d/2000*size);}
  const z=diagnosis?state.scene.zone:state.scene.rules.zone;c.fillStyle='#cf65551c';c.strokeStyle='#bc6554';c.setLineDash([6,4]);c.fillRect(x(z.x0),y(z.y1),(z.x1-z.x0)/2000*size,(z.y1-z.y0)/2000*size);c.strokeRect(x(z.x0),y(z.y1),(z.x1-z.x0)/2000*size,(z.y1-z.y0)/2000*size);c.setLineDash([]);
+ {const rad=CM_STATION.range/2000*size,az=CM_STATION.azimuth*Math.PI/180,half=CM_STATION.fov*Math.PI/360;c.fillStyle='rgba(217,130,43,0.14)';c.strokeStyle='rgba(217,130,43,0.75)';c.beginPath();c.moveTo(x(CM_STATION.x),y(CM_STATION.y));c.arc(x(CM_STATION.x),y(CM_STATION.y),rad,-Math.PI/2+az-half,-Math.PI/2+az+half);c.closePath();c.fill();c.stroke();}
  for(const d of state.scene.devices){c.fillStyle=d.status==='online'?'#254d68':'#9aa7b1';c.fillRect(x(d.x)-4,y(d.y)-4,8,8);if(diagnosis){c.font='10px sans-serif';c.fillText(d.id,x(d.x)+7,y(d.y)+4);}}
  if(diagnosis)return;
  if($('show-truth').checked&&!state.imported){c.setLineDash([3,5]);state.run.truth.forEach((t,j)=>{c.strokeStyle=palette[j]+'77';c.beginPath();t.points.slice(0,state.time+1).forEach((p,i)=>i?c.lineTo(x(p[0]),y(p[1])):c.moveTo(x(p[0]),y(p[1])));c.stroke();});c.setLineDash([]);}
@@ -85,6 +105,7 @@ $('network3d-route-step').addEventListener('input',()=>{state.routeStep=Number($
 $('preview-route-3d').addEventListener('click',showPlanning3D);
 $('export-route').addEventListener('click',()=>{if(state.route)download(state.route,'航路协同推演.json');});
 $('plan-result').addEventListener('click',async e=>{try{if(e.target.id==='preview-plan-3d'){if(!await loadPlanCoverage())return;$('coverage-config').value='delta';showPlanning3D();}if(e.target.id==='apply-plan'){await api(base()+'/apply/'+state.plan.id,{method:'POST'});await load();notice('补点方案已应用，可以在风险态势中回放新配置。');}if(e.target.id==='export-plan')download({scene:state.scene,plan:state.plan,comparison:state.comparison},'补点方案与感知对比.json');}catch(err){notice(err.message,true);}});
+$('export-cm-handover')?.addEventListener('click',()=>{if(!state.scene||!state.run)return;const f=currentFrame()||{time:0,tracks:[]};const items=f.tracks.map(t=>({track_id:t.id,position_m:t.position,sources:t.sources,uncertainty_m:t.uncertainty_m,readiness:evaluateCountermeasureReadiness(t,f.tracks)}));download({document_type:'低空异常目标多模态感知取证与合规反制引导交接单',legal_basis:'依据《无人驾驶航空器飞行管理暂行条例》第42、43条及《治安管理处罚法》第46条：本平台仅输出多模态感知取证与定向波束引导建议，不下发反制控制指令；反制处置须由公安机关或法定授权重点目标单位审批执行。',scene:state.scene.name,scene_revision:state.scene.revision,frame_time_s:f.time,authorized_station:CM_STATION,targets:items,exported_at:new Date().toISOString()},'合规取证与定向反制引导单.json');});
 $('report').addEventListener('click',async()=>{try{if(state.imported)download({scene:state.scene,run:state.run,created_at:new Date().toISOString()},'导入量测回放报告.json');else download(await api(base()+'/report'),'低空感知验证报告.json');}catch(e){notice(e.message,true);}});
 $('sample').addEventListener('click',()=>{if(!state.run)return;download({label:'标准化位置量测样例（模拟）',frames:state.run.frames.map(f=>({time:f.time,observations:f.observations}))},'量测回放样例.json');});
 $('import').addEventListener('change',async e=>{const file=e.target.files[0];if(!file)return;if(file.size>5e6){notice('文件应小于 5 MB',true);return;}try{setPlaying(false);const data=JSON.parse(await file.text()),run=await api(base()+'/replay',{method:'POST',body:JSON.stringify(data)});state.loadVersion++;Object.assign(state,{run,imported:true,time:0,selected:null});$('time').max=run.frames.length-1;$('time').value=0;$('data-mode').textContent='导入量测';render();renderResearch();notice('量测回放已导入。输入来源由用户声明，无独立真值，不显示准确率。');}catch(err){notice('导入失败：'+err.message,true);}e.target.value='';});

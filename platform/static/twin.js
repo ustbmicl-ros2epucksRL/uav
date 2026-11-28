@@ -113,6 +113,7 @@ async function refreshSpaceLayer() {
                 altitude_m: (currentMode === 'coverage' || currentMode === 'precision') && altVal ? Number(altVal) : null,
                 cell_m: altVal ? 65 : 100,
                 precision_m: inputs.environment.precision_m,
+                jamming_active: Boolean($('twin3d-jamming')?.checked),
             }),
         });
         if (rev !== spaceRevision) return;
@@ -547,6 +548,36 @@ function rayOccludedByBuildings(sx, sy, sz, tx, ty, tz, buildings) {
     return null;
 }
 
+function defaultCountermeasureSites(sceneId) {
+    const list = [{
+        id: 'CM-AUTH-01', name: '重点区西南授权定向反制站', x: 680, y: 680, z: 48,
+        azimuth: 45, fov: 85, range: 560, rf_isolation_m: 180,
+        authority: '公安/重点目标法定授权点位（《条例》第43条）',
+    }];
+    if (sceneId === 'electromagnetic') {
+        list.push({
+            id: 'CM-AUTH-02', name: '变电核心区东北受控压制点', x: 1250, y: 1180, z: 52,
+            azimuth: 225, fov: 80, range: 520, rf_isolation_m: 180,
+            authority: '重点设施受控电磁防控点（外部授权设施）',
+        });
+    }
+    return list;
+}
+
+function sensorInFov2D(d, tx, ty) {
+    const dx = tx - d.x, dy = ty - d.y;
+    if (Math.hypot(dx, dy) > (d.range || 1000)) return false;
+    const fov = d.fov ?? 360;
+    if (fov < 359.5) {
+        const bearing = (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
+        const diff = Math.abs(((bearing - (d.azimuth || 0) + 540) % 360) - 180);
+        if (diff > fov / 2) return false;
+    }
+    return true;
+}
+
+let latestCmSnapshot = null;
+
 function updateTwin3D(t) {
     const scene = record.inputs.scene;
     const primary = deployment($('primary').value);
@@ -561,6 +592,56 @@ function updateTwin3D(t) {
     const clampedIdx = Math.max(0, Math.min(activePoints.length - 1, t));
     const [px, py, pz] = activePoints[clampedIdx];
     const sample = activeTimeline[clampedIdx] || {};
+    const buildings = spaceData?.buildings || scene.buildings || [];
+    const jammingActive = Boolean($('twin3d-jamming')?.checked);
+    const cmSites = spaceData?.countermeasure?.sites || defaultCountermeasureSites(scene.id);
+
+    // Evaluate live line-of-sight modalities under normal vs active countermeasure suppression
+    const activeModalities = new Set();
+    let liveStationCount = 0;
+    for (const d of primary.devices || []) {
+        if (d.status === 'offline' || d.type === 'ADSB') continue;
+        if (jammingActive && d.type === 'RF') continue;
+        if (!sensorInFov2D(d, px, py)) continue;
+        if (!rayOccludedByBuildings(d.x, d.y, d.z, px, py, pz, buildings)) {
+            activeModalities.add(d.type);
+            liveStationCount++;
+        }
+    }
+    const jammingDegraded = jammingActive && liveStationCount < 2;
+    const effectiveState = jammingDegraded ? (liveStationCount === 0 ? 'blind' : 'unlocatable') : sample.state;
+
+    // Cooperative whitelist logistics UAV trajectory for airspace deconfliction check
+    const totalN = Math.max(2, activePoints.length);
+    const frac = clampedIdx / (totalN - 1);
+    const coopX = 320 + frac * 1360;
+    const coopY = 930 + 95 * Math.sin(frac * Math.PI * 2);
+    const coopZ = 158;
+    const coopPoint = [coopX, coopY, coopZ, Math.PI / 2];
+
+    const station0 = cmSites[0];
+    const gDx = px - station0.x, gDy = py - station0.y, gDz = pz - station0.z;
+    const gAz = Number((((Math.atan2(gDx, gDy) * 180 / Math.PI) + 360) % 360).toFixed(1));
+    const gEl = Number((Math.atan2(gDz, Math.max(1, Math.hypot(gDx, gDy))) * 180 / Math.PI).toFixed(1));
+    const coopAz = ((Math.atan2(coopX - station0.x, coopY - station0.y) * 180 / Math.PI) + 360) % 360;
+    const coopConflict = Math.abs(((coopAz - gAz + 540) % 360) - 180) <= 15 && Math.hypot(coopX - station0.x, coopY - station0.y) <= station0.range + 220;
+    const crlbVal = jammingDegraded ? null : sample.crlb_m;
+    const hasNonRfLock = activeModalities.has('RADAR') || activeModalities.has('EO') || activeModalities.has('IR');
+    const guidanceReady = hasNonRfLock && liveStationCount >= 2 && (crlbVal == null || crlbVal <= record.inputs.environment.precision_m * 1.2) && !coopConflict;
+    const emcOk = spaceData?.countermeasure ? spaceData.countermeasure.emc_rf_isolated : true;
+
+    latestCmSnapshot = {
+        scene: scene.name || scene.id,
+        deployment: primary.label,
+        time_s: clampedIdx,
+        target_xyz_m: [px, py, pz],
+        jamming_active: jammingActive,
+        emc_rf_isolated: emcOk,
+        locked_modalities: [...activeModalities],
+        live_stations: liveStationCount,
+        crlb_m: crlbVal,
+        guidance: {station_id: station0.id, station_name: station0.name, azimuth_deg: gAz, elevation_deg: gEl, coop_conflict: coopConflict, ready: guidanceReady},
+    };
 
     const anchor = spaceData?.anchor || scene.geographic_anchor || {
         urban: {latitude: 39.0510, longitude: 115.9810, label: '雄安高密建筑片区'},
@@ -569,11 +650,24 @@ function updateTwin3D(t) {
     }[scene.id] || {latitude: 39.0510, longitude: 115.9810, label: '雄安新区'};
 
     if ($('twin3d-hud')) {
-        const crlbStr = sample.crlb_m == null ? '单站/盲区不可解算' : `${sample.crlb_m.toFixed(1)} m`;
+        const crlbStr = crlbVal == null ? (jammingActive ? 'RF受抑失锁/单站退化' : '单站/盲区不可解算') : `${crlbVal.toFixed(1)} m`;
         $('twin3d-hud').innerHTML =
-            `<div><b>${escapeHtml(MODE_LABELS[currentMode])}</b> · ${escapeHtml(anchor.label || scene.name)}（${anchor.latitude.toFixed(4)}°N, ${anchor.longitude.toFixed(4)}°E）</div>` +
-            `<div>当前方案：<b>${escapeHtml(primary.label)}</b>（新增 ${primary.added.length} 站） · 时刻 <b>t=${clampedIdx} s</b> · 坐标 (${Math.round(px)}, ${Math.round(py)}, <b>${pz} m</b>)</div>` +
-            `<div>探测概率 Pd：<b>${sample.pd == null ? '—' : sample.pd.toFixed(2)}</b> · 共视基站：<b>${sample.stations ?? 0} 座</b> · 三维定位界 CRLB：<b>${crlbStr}</b></div>`;
+            `<div><b>${escapeHtml(MODE_LABELS[currentMode])}</b> · ${escapeHtml(anchor.label || scene.name)}</div>` +
+            `<div>方案：<b>${escapeHtml(primary.label)}</b>（+${primary.added.length} 站 / ${primary.metrics.added_cost} 万） · <b>t=${clampedIdx} s</b></div>` +
+            `<div>有效共视站：<b>${liveStationCount} 座</b>（${[...activeModalities].join('+') || '无视距'}） · 三维 CRLB：<b>${crlbStr}</b></div>`;
+    }
+
+    if ($('twin3d-cm-hud')) {
+        const badgeCls = coopConflict ? 'warn' : (guidanceReady ? 'ok' : (jammingActive ? 'jam' : 'warn'));
+        const badgeTxt = coopConflict ? '净空避让暂缓' : (guidanceReady ? '合规引导就绪' : (jammingDegraded ? '压制致盲失锁' : '待多源确认'));
+        $('twin3d-cm-hud').innerHTML =
+            `<div class="cm-title"><span>⚡ 感反协同与合规引导</span><span class="cm-tag ${badgeCls}">${badgeTxt}</span></div>` +
+            `<div>感反EMC隔离：<b>${emcOk ? '✔ RF站避开压制主瓣(≥180m)' : '⚠ 存在阻塞风险'}</b></div>` +
+            `<div>压制工况：<b>${jammingActive ? '开启(RF通道受抑关闭)' : '待命监测态'}</b> · 模态阶数：<b>${activeModalities.size}类</b></div>` +
+            `<div>定向波束参数：<b>方位 ${gAz}° / 俯仰 ${gEl}°</b>（${coopConflict ? '扇区含合作机' : '扇区净空合规'}）</div>` +
+            `<button type="button" id="twin3d-export-cm">导出合规取证与定向引导交接单</button>`;
+        const expBtn = $('twin3d-export-cm');
+        if (expBtn) expBtn.onclick = exportTwinCountermeasureHandover;
     }
 
     if (!engine3d) return;
@@ -581,22 +675,47 @@ function updateTwin3D(t) {
         sceneId: scene.id,
         buildingSource: bsrc,
         anchor,
-        buildings: spaceData?.buildings || scene.buildings,
+        buildings,
         footprints: spaceData?.footprints || [],
         zone: scene.zone,
         devices: primary.devices,
         addedIds: primary.added,
+        countermeasureSites: cmSites,
         points: activePoints,
+        coopPoint,
         timeline: activeTimeline,
         ellipsoids: activeEllipsoids,
+        effectiveState,
+        jammingActive,
+        jammingDegraded,
+        guidance: {station: station0, azimuth: gAz, elevation: gEl, ready: guidanceReady, conflict: coopConflict},
         segmentRange: isFlight ? null : segmentRange,
         timeIndex: clampedIdx,
         showImagery: !$('twin3d-imagery') || $('twin3d-imagery').checked,
         showLos: !$('twin3d-los') || $('twin3d-los').checked,
         showEllipsoid: !$('twin3d-ellipsoid') || $('twin3d-ellipsoid').checked,
         showFov: !$('twin3d-fov') || $('twin3d-fov').checked,
+        showCountermeasure: !$('twin3d-countermeasure') || $('twin3d-countermeasure').checked,
         showLabels: !$('twin3d-labels') || $('twin3d-labels').checked,
     });
+}
+
+function exportTwinCountermeasureHandover() {
+    if (!latestCmSnapshot || typeof Blob === 'undefined' || typeof URL.createObjectURL !== 'function') return;
+    const doc = {
+        document_type: '低空异常目标多模态数字孪生取证与合规反制引导交接单',
+        legal_declaration: '依据《无人驾驶航空器飞行管理暂行条例》第42、43条及无线电管理规定：本平台仅输出前端多模态感知取证、感反电磁兼容核验与窄波束引导参数，不下发任何反制发射指令；现场处置由公安机关或法定授权单位依法执行。',
+        experiment_id: record?.id,
+        ...latestCmSnapshot,
+        exported_at: new Date().toISOString(),
+    };
+    const blob = new Blob([JSON.stringify(doc, null, 2)], {type: 'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `合规反制引导单-${record?.id?.slice(0, 8) || 'twin'}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function drawMap(t) {
@@ -784,9 +903,20 @@ $('flight-track-select')?.addEventListener?.('change', () => {
 $('twin3d-reset')?.addEventListener?.('click', () => engine3d?.homeView());
 $('twin3d-side')?.addEventListener?.('click', () => engine3d?.sideView());
 $('twin3d-top')?.addEventListener?.('click', () => engine3d?.topView());
-for (const id of ['twin3d-imagery', 'twin3d-los', 'twin3d-ellipsoid', 'twin3d-fov', 'twin3d-labels']) {
+for (const id of ['twin3d-imagery', 'twin3d-los', 'twin3d-ellipsoid', 'twin3d-fov', 'twin3d-countermeasure', 'twin3d-labels']) {
     $(id)?.addEventListener?.('change', draw);
 }
+$('twin3d-jamming')?.addEventListener?.('change', () => {
+    refreshSpaceLayer();
+    draw();
+});
+$('twin3d-expand')?.addEventListener?.('click', () => {
+    const p = $('twin3d-panel');
+    if (!p) return;
+    const exp = p.classList?.toggle?.('expanded-3d');
+    $('twin3d-expand').textContent = exp ? '退出全屏' : '全屏三维';
+    setTimeout(() => engine3d?.resize(), 40);
+});
 
 $('chain').addEventListener('click', event => {
     const button = event.target.closest('[data-point]');

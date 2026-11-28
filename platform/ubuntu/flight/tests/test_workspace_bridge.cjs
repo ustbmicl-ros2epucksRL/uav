@@ -76,13 +76,14 @@ test('unified workspace groups collapsible sections, nests station algorithms, a
     const planningBtnPos = html.indexOf('data-platform="planning"');
     assert.ok(stationDrawerPos > html.indexOf('data-platform="station"') && stationDrawerPos < planningBtnPos,
         'station route algorithms must nest directly under station platform entry');
-    for (const subPath of ['/network/overview', '/network/twin', '/network/acceptance', '/network/tasks', '/network/demonstration']) {
+    for (const subPath of ['/network/overview', '/network/modeling', '/network/twin', '/network/acceptance', '/network/tasks', '/network/demonstration']) {
         assert.ok(html.includes(`data-planning-path="${subPath}"`), subPath);
     }
     assert.ok(html.includes('id="theory-skill-list"'));
     assert.ok(html.includes('id="skill-list"'));
     assert.ok(html.includes('id="platform-synergy"'));
     assert.ok(js.includes("['research_framework', '研究体系与四维可行性']"));
+    assert.ok(js.includes("['standard_modeling', '选址·航路·调度标准约束']"));
     assert.ok(js.includes("selectTheoryMechanismSkill"));
     assert.ok(js.includes("selectPlatformSkill"));
 });

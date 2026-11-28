@@ -11,6 +11,7 @@
         ['research_framework', '研究体系与四维可行性'],
         ['proposal_kpi', '申报考核指标口径核对'],
         ['proposal_search', '申请书条款与页码检索'],
+        ['standard_modeling', '选址·航路·调度标准约束'],
         ['diagnose_coverage', '三维覆盖与薄弱区诊断'],
         ['twin_experiment', '数字孪生五方案反事实对照'],
         ['assessment_results', '细网格（10m/2m）规划验算'],
@@ -22,7 +23,7 @@
         ['service_tasks', '低空服务任务与审批闭环'],
     ]);
     const theorySkillIds = new Set(['research_framework', 'proposal_kpi', 'proposal_search']);
-    const planningAlgoIds = new Set(['diagnose_coverage', 'twin_experiment', 'assessment_results', 'scene_snapshot', 'planning_records']);
+    const planningAlgoIds = new Set(['standard_modeling', 'diagnose_coverage', 'twin_experiment', 'assessment_results', 'scene_snapshot', 'planning_records']);
     const fallbackTheoryMechanisms = [
         {id:'theory-task-1', task_id:1, workflow:'research', title:'子项目一 · 遮挡与网格收敛机理',
             description:'三维几何视线遮挡、共视相关性 ρ 与 10m/2m 混合网格收敛算例',
@@ -44,6 +45,7 @@
         ['research_framework', '请使用 research_framework 梳理本项目研究的问题、五项研究内容的输入输出关系、重要性、数字孪生必要性与四维可行性，并明确合成证据边界。'],
         ['proposal_kpi', '请使用 proposal_kpi 核对正式申报书考核指标阈值及早期稿对照口径，说明达标判定规则。'],
         ['proposal_search', '请使用 proposal_search 在正式申请书原文中检索“典型场景组网验证”和“多模态感知设备”相关条款并标注 PDF 页码。'],
+        ['standard_modeling', '请使用 standard_modeling 核查当前场景下设备选址、航路规划与三级任务调度的标准参数完备性与硬约束核验状态，并说明为何该层无需强化学习训练数据。'],
         ['diagnose_coverage', '请使用 diagnose_coverage 对当前冻结场景执行三维覆盖诊断，指出覆盖率与薄弱空域并说明网格口径。'],
         ['twin_experiment', '请使用 twin_experiment 对比当前场景数字孪生中的现有部署、完整规划方案与三项反事实方案，说明各子项目必要性。'],
         ['assessment_results', '请使用 assessment_results 核查当前场景最近的 10m/2m 细网格规划验算结果、预算费用与定位精度瓶颈。'],
@@ -72,6 +74,11 @@
             $('nav-toggle').focus();
         }
     }
+    $('rail-collapse')?.addEventListener('click', () => {
+        const collapsed = $('workspace').classList.toggle('rail-collapsed');
+        $('rail-collapse').setAttribute('aria-pressed', String(collapsed));
+        $('rail-collapse').textContent = collapsed ? '展开栏' : '侧栏';
+    });
     function setChat(open) {
         $('chat-dock').classList.toggle('collapsed', !open);
         $('chat-toggle').setAttribute('aria-expanded', String(open));
